@@ -315,6 +315,10 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
       <button class="act" id="btnConect">Conectează</button>
       <span class="mic" id="sAdaptor">—</span>
     </div>
+    <div class="rand" style="margin-top:9px">
+      <span class="mic" id="sFelPunte">—</span>
+      <button class="sec" id="btnClasic" style="display:none">Treci pe Bluetooth clasic</button>
+    </div>
   </div>
   <div class="tl">
     <p class="lbl">Mașina</p>
@@ -1174,6 +1178,33 @@ G("btnJos").addEventListener("click",function(){
   setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(u); },400);
   scrie("descărcat: "+n+" ("+Math.round(text.length/1024)+" KB)");
 });
+
+/* ============================================ felul legăturii
+
+   Unitatile din bord nu sunt toate la fel: unele au Bluetooth Low Energy,
+   altele numai clasic. Aplicatia alege singura la pornire, dar recunoasterea
+   se poate insela — sunt unitati care declara BLE si au si scanner, dar pe care
+   BLE-ul nu merge de fapt. Butonul e iesirea din fundatura: fara el, omul
+   ramane blocat si n-are nicio cale fara sa recompileze. */
+(function(){
+  var P=window.Punte;
+  if(!P||!P.fel){ G("sFelPunte").textContent="legătură prin browser (Web Bluetooth)"; return; }
+  var f=P.fel();
+  G("sFelPunte").textContent = (f==="clasic")
+    ? "Bluetooth clasic · adaptorul trebuie împerecheat din Setări"
+    : "Bluetooth Low Energy";
+  if(f!=="clasic"&&P.alege_clasic){
+    var b=G("btnClasic");
+    b.style.display="";
+    b.addEventListener("click",function(){
+      if(!window.confirm("Trec pe Bluetooth clasic. Se aplică după repornirea "+
+         "aplicației, iar adaptorul trebuie împerecheat din Setări → Bluetooth.")) return;
+      P.alege_clasic(true);
+      G("sFelPunte").textContent="Bluetooth clasic la următoarea pornire";
+      b.style.display="none";
+    });
+  }
+})();
 
 /* ============================================ pornirea */
 incarcaHarta(); incarcaIstoric(); incarcaIngrijire(); incarcaIstAb();

@@ -2,6 +2,7 @@ package ro.allview.cityzen
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -69,7 +70,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var web: WebView
-    private lateinit var punte: PunteBle
+    private var punteBle: PunteBle? = null
+    private var punteSpp: PunteSpp? = null
     private val mana = Handler(Looper.getMainLooper())
     private var origineGps: String? = null
     private var apelGps: GeolocationPermissions.Callback? = null
@@ -128,8 +130,39 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        punte = PunteBle(this, web)
-        web.addJavascriptInterface(punte, "Punte")
+        /*
+         * Care punte. Unitatea din Allview Cityzen n-are Bluetooth Low Energy,
+         * iar PunteBle vorbeste numai BLE — pe ea, orice adaptor ar fi, nu se
+         * leaga nimic. Alegerea se face singura, la pornire, si se scrie in
+         * jurnal: cand ceva nu merge, primul lucru pe care vrei sa-l stii e pe
+         * ce drum a plecat aplicatia.
+         *
+         * Se verifica doua lucruri, nu unul. Unele unitati declara capabilitatea
+         * BLE in sistem, dar n-au scanner — si atunci totul pare in regula pana
+         * la prima cautare, care intoarce zero aparate fara nicio eroare.
+         */
+        val areCapabilitate =
+            packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
+        val areScanner = try {
+            (getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)
+                ?.adapter?.bluetoothLeScanner != null
+        } catch (e: Exception) { false }
+
+        val fortatClasic = getSharedPreferences("cityzen", MODE_PRIVATE)
+            .getBoolean("fortatClasic", false)
+
+        if (areCapabilitate && areScanner && !fortatClasic) {
+            punteBle = PunteBle(this, web)
+            web.addJavascriptInterface(punteBle!!, "Punte")
+            android.util.Log.i("Punte", "Bluetooth Low Energy")
+        } else {
+            punteSpp = PunteSpp(this, web)
+            web.addJavascriptInterface(punteSpp!!, "Punte")
+            android.util.Log.i("Punte", "Bluetooth clasic" +
+                (if (fortatClasic) " (cerut din setari)"
+                 else if (!areCapabilitate) " (unitatea n-are BLE)"
+                 else " (unitatea n-are scanner BLE)"))
+        }
         web.addJavascriptInterface(PunteFisiere(this), "Fisiere")
 
         setContentView(web)

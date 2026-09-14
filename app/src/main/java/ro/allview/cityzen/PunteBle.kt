@@ -248,6 +248,17 @@ class PunteBle(
     @JavascriptInterface
     fun este_conectat(): Boolean = gatt != null
 
+    /** Ce fel de punte e, ca sa se vada in pagina. */
+    @JavascriptInterface
+    fun fel(): String = "ble"
+
+    /** Trecerea pe Bluetooth clasic, ceruta de om. Se aplica la repornire. */
+    @JavascriptInterface
+    fun alege_clasic(da: Boolean) {
+        activitate.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            .edit().putBoolean("fortatClasic", da).apply()
+    }
+
     /**
      * O incercare de legatura.
      *
