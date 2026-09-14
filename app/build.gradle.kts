@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    namespace = "ro.baw.monitor"
+    namespace = "ro.allview.cityzen"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "ro.baw.monitor"
-        // Unitatea din BAW are Android 11 (API 30). minSdk 26 lasa loc si
+        applicationId = "ro.allview.cityzen"
+        // Unitatea din Allview Cityzen are Android 11 (API 30). minSdk 26 lasa loc si
         // pentru unitati mai vechi, daca vor aparea.
         minSdk = 26
         targetSdk = 34

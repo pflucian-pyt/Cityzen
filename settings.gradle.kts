@@ -4,5 +4,5 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
-rootProject.name = "BawMonitor"
+rootProject.name = "CityzenMonitor"
 include(":app")

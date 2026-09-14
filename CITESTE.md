@@ -1,4 +1,4 @@
-# BAW L7e — aplicația pentru unitatea din bord
+# Allview Cityzen — aplicația pentru unitatea din bord
 
 APK pentru unitatea din bord a mașinii. Aceeași aplicație pe care ai rulat-o în
 Chrome, împachetată ca aplicație Android, ca să se lege singură la adaptor și
@@ -8,7 +8,7 @@ să meargă fără telefon.
 
 Pui folderul într-un depozit GitHub nou și îl împingi. Actions îl compilează
 singur — același fișier de lucru ca la Avatr. Iei APK-ul de la **Actions →
-ultima rulare → Artifacts → BawMonitor-APK**.
+ultima rulare → Artifacts → CityzenMonitor-APK**.
 
 Ia varianta `release`. Cea `debug` se instalează alături, cu alt nume, dacă
 vrei să le ai pe amândouă.
@@ -52,13 +52,29 @@ celulă, nu de la zero. De la zero, toate ar fi egale: pachetul stă între 3,24
 **Setări** — adaptorul, capacitatea bateriei, harta semnalelor și modul
 culegere.
 
+**Fața de pe bord** se compară cu media ta, nu cu un ideal de fabrică, și se
+schimbă lent — la treizeci de secunde, cu prag. Un indicator care clipește ar
+trage privirea de pe drum exact când nu trebuie.
+
+**Bateria de pe fila celule** are șase stări și vorbește la persoana întâi.
+Cere ceva doar când chiar e nevoie; altfel stă liniștită. Insignele răsplătesc
+ce face șoferul, nu starea pachetului — o notă pentru ceva ce nu poate schimba
+ar produce doar neliniște.
+
+**Raportul de la oprire** apare singur când mașina stă și dispare când pornește
+iar. Acolo e locul jocului, nu în mers.
+
+Insigna „Răbdare la rece" are nevoie de temperatura de afară, luată prin
+internet când unitatea prinde o rețea. Fără ea rămâne neacordată — o insignă
+dată pe baza a nimic strică încrederea în toate celelalte.
+
 Harta semnalelor e deja în aplicație, deci la prima pornire vezi cifre, nu
 liniuțe. Dacă ceva iese aiurea, o corectezi din setări — nu trebuie
 reconstruit APK-ul.
 
 ## Ce verificăm, în ordine
 
-1. **Pornește aplicația?** Dacă nu, în Descărcări apare `baw_erori.txt`.
+1. **Pornește aplicația?** Dacă nu, în Descărcări apare `cityzen_erori.txt`.
 2. **Vede adaptorul?** Apeși Conectează în setări, ar trebui să apară OBDLink CX.
 3. **Se leagă?** Starea din antet trece pe „conectat · OBDLink CX".
 4. **Vin cadrele?** Pe fila celule ar trebui să apară cele 38 de bare în

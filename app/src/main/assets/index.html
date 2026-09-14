@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>BAW L7e</title>
+<title>Allview Cityzen</title>
 <!--
-  Aplicatia din bordul BAW L7e.
+  Aplicatia din bordul Allview Cityzen.
 
   Trei file: bord, celule, setari. Ecranul unitatii e 1600x720 — lat si scund —
   deci totul sta pe orizontala si nimic nu se deruleaza. Versiunea de teste era
@@ -148,7 +148,7 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
 
 <header>
   <span class="led" id="led"></span>
-  <h1>BAW L7e</h1>
+  <h1>Allview Cityzen</h1>
   <span id="stare">neconectat</span>
   <div id="file">
     <button class="on" data-p="Bord">bord</button>
@@ -228,8 +228,12 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
     <div><div class="et">cea mai încărcată</div><div class="vl" style="font-size:20px" id="clMax">—</div></div>
     <div><div class="et">abatere</div><div class="vl" style="font-size:20px" id="clAb">—</div></div>
     <div><div class="et">pachet</div><div class="vl" style="font-size:20px" id="clPachet">—</div></div>
+    <div><div class="et">mai ai</div><div class="vl" style="font-size:20px" id="clAh">—</div></div>
+    <div><div class="et">capacitate</div><div class="vl" style="font-size:20px" id="clCap">—</div>
+      <div class="mic" id="clCapSub">—</div></div>
     <div style="margin-left:auto;text-align:right"><div class="et">temperaturi</div>
-      <div style="font-size:14px;color:var(--cald)">încă negăsite</div></div>
+      <div class="vl" style="font-size:20px" id="clTemp">—</div>
+      <div class="mic" id="clTempSub">—</div></div>
   </div>
   <div style="flex:1;display:flex;min-height:0;gap:12px">
     <div style="flex:1;display:flex;flex-direction:column;min-width:0">
@@ -341,27 +345,58 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
 
 <script src="punte.js"></script>
 <script>
+
+/* Masina se cheama Allview Cityzen, nu BAW — numele s-a schimbat peste tot,
+   inclusiv cheile de stocare. Ce s-a adunat sub numele vechi se muta o singura
+   data, ca sa nu se piarda istoricul, apoi cheile vechi se sterg. */
+(function(){
+  var per=[["bawIstoric","cityzenIstoric"],["bawIngrijire","cityzenIngrijire"],["bawIstAb","cityzenIstAb"],["bawVremea","cityzenVremea"],["bawHartaV1","cityzenHarta"]];
+  per.forEach(function(p){
+    try{
+      var v=localStorage.getItem(p[0]);
+      if(v!==null&&localStorage.getItem(p[1])===null) localStorage.setItem(p[1],v);
+      if(v!==null) localStorage.removeItem(p[0]);
+    }catch(e){}
+  });
+})();
 (function(){
 "use strict";
 var G=function(i){ return document.getElementById(i); };
 var VERSIUNE="1.0";
 
 /* ============================================ harta din fabrica
-   Ce s-a gasit pana acum pe magistrala BAW: CAN 29 biti, 500 kbit/s, numere
+   Ce s-a gasit pana acum pe magistrala Allview Cityzen: CAN 29 biti, 500 kbit/s, numere
    little-endian. Se poate inlocui din setari fara reconstruit aplicatia. */
 var HARTA_IMP={
-  masina:"BAW L7e electric",
+  masina:"Allview Cityzen",
   celuleCadre:["18FD90F3","18FD91F3","18FD92F3","18FD93F3","18FD94F3",
                "18FD95F3","18FD96F3","18FD97F3","18FD98F3","18FD99F3"],
   celuleN:38,
+  /* Gasite pe 14 septembrie: aceeasi sursa F3, acelasi tipar ca celulele.
+     Opt senzori intr-un cadru si inca doi in al doilea, zece in total.
+     Decalajul -40 e conventia obisnuita in auto si dadea 16 °C pe o masina
+     racita peste noapte in septembrie. Se confirma la primul drum: daca urca
+     spre 19-22 °C, e bun; daca ar fi valoare directa, ar insemna 56 °C pe o
+     masina rece, ceea ce e imposibil. */
+  tempCadre:["18FDD0F3","18FDE0F3"],
+  tempN:10, tempPlus:-40,
   semnale:[
     {rol:"tensiune", id:"1803D0F3", octet:4, lung:2, ordine:"le", factor:0.1},
     {rol:"curent",   id:"1803D0F3", octet:6, lung:2, ordine:"le", factor:0.1, plus:-1000},
+    /* 1808D0F3, descifrat pe 14 septembrie prin comparatie intre sapte
+       sesiuni: [0-1] amperore ramasi la scara 0,01 · [2] procent · [3] stare
+       de sanatate · [6-7] tensiunea medie pe celula. Impartind amperoreii la
+       procent a iesit de sapte ori aceeasi capacitate, 104-107 Ah. */
     {rol:"soc",      id:"1808D0F3", octet:2, lung:1, factor:1},
+    {rol:"ahRamasi", id:"1808D0F3", octet:0, lung:2, ordine:"le", factor:0.01},
+    {rol:"soh",      id:"1808D0F3", octet:3, lung:1, factor:1},
+    {rol:"celMed",   id:"1808D0F3", octet:6, lung:2, ordine:"le", factor:0.001},
     {rol:"viteza",   id:"1801D9D0", octet:2, lung:1, factor:1},
     {rol:"rpm",      id:"1801D0F8", octet:0, lung:2, ordine:"le", factor:1, plus:-12000},
     {rol:"celMax",   id:"1802D0F3", octet:2, lung:2, ordine:"le", factor:0.001},
     {rol:"celMin",   id:"1802D0F3", octet:4, lung:2, ordine:"le", factor:0.001},
+    {rol:"tMax",     id:"1802D0F3", octet:6, lung:1, factor:1, plus:-40},
+    {rol:"tMin",     id:"1802D0F3", octet:7, lung:1, factor:1, plus:-40},
     {rol:"autonomie",id:"180217D0", octet:6, lung:1, factor:1}
   ]
 };
@@ -525,7 +560,7 @@ function primesteCadru(c){
 /* ============================================ harta si valorile */
 var harta=null;
 function incarcaHarta(){
-  try{ harta=JSON.parse(localStorage.getItem("bawHartaV1")||"null"); }catch(e){ harta=null; }
+  try{ harta=JSON.parse(localStorage.getItem("cityzenHarta")||"null"); }catch(e){ harta=null; }
   if(!harta||!harta.semnale) harta=JSON.parse(JSON.stringify(HARTA_IMP));
   G("sHarta").value=JSON.stringify(harta,null,1);
 }
@@ -557,7 +592,21 @@ function reciteste(){
     }
   });
   V.celule=c;
+  var t=[],nt=harta.tempN||10,pt=(harta.tempPlus===undefined?-40:harta.tempPlus);
+  (harta.tempCadre||[]).forEach(function(id){
+    var h=cadre[id]; if(!h) return;
+    for(var i=0;i<8&&t.length<nt;i++){
+      if(i*2+2>h.length) break;
+      var v=parseInt(h.substr(i*2,2),16);
+      if(v>0) t.push(v+pt);
+    }
+  });
+  V.temp=t;
   if(V.tensiune!=null&&V.curent!=null) V.putere=V.tensiune*V.curent/1000;
+  /* Capacitatea iese din impartire, nu din vreun octet: amperoreii ramasi
+     supra procent. Sub zece la suta raportul se duce, fiindca si o eroare de
+     un procent conteaza mult acolo — deci nu se socoteste. */
+  if(V.ahRamasi!=null&&V.soc!=null&&V.soc>=10) V.capacitate=V.ahRamasi/V.soc*100;
 }
 
 /* ============================================ socoteala consumului
@@ -576,7 +625,7 @@ var anterioare=[];
 function ziua(){ var d=new Date(); return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
 function incarcaIstoric(){
   try{
-    var o=JSON.parse(localStorage.getItem("bawIstoric")||"null");
+    var o=JSON.parse(localStorage.getItem("cityzenIstoric")||"null");
     if(o){ azi=o.azi||azi; anterioare=o.anterioare||[]; }
   }catch(e){}
   if(azi.zi!==ziua()) azi={zi:ziua(),km:0,wh:0,whRec:0,curse:0};
@@ -584,7 +633,7 @@ function incarcaIstoric(){
 var ultSalv=0;
 function salveaza(f){
   var a=Date.now(); if(!f&&a-ultSalv<15000) return; ultSalv=a;
-  try{ localStorage.setItem("bawIstoric",JSON.stringify({azi:azi,anterioare:anterioare.slice(-5)})); }
+  try{ localStorage.setItem("cityzenIstoric",JSON.stringify({azi:azi,anterioare:anterioare.slice(-5)})); }
   catch(e){}
 }
 
@@ -763,7 +812,9 @@ function desenBaterie(st){
 function stareaBateriei(){
   var acum=Date.now();
   if(V.curent!=null&&V.curent<-2&&acum-ult.drumLung<20*60000) return "fierbinte";
-  if(vremea.t!=null&&vremea.t<5&&acum-vremea.cand<6*3600000&&
+  var tRece=(V.temp&&V.temp.length)?Math.min.apply(null,V.temp)
+            :((vremea.t!=null&&acum-vremea.cand<6*3600000)?vremea.t:null);
+  if(tRece!=null&&tRece<5&&
      cursa.activa&&acum-cursa.start<5*60000&&acum-ult.oprit>4*3600000) return "rece";
   if(V.soc!=null&&V.soc<20&&ing.subJos&&acum-ing.subJos>48*3600000) return "flamanda";
   if(ing.ultimPlin&&acum-ing.ultimPlin>28*24*3600000) return "derutata";
@@ -776,13 +827,13 @@ var ing={nopti:0,dimineti:0,ultimPlin:0,subJos:0,vazutAzi:""};
 var ult={drumLung:0,oprit:Date.now()};
 var vremea={t:null,cand:0};
 function incarcaIngrijire(){
-  try{ var o=JSON.parse(localStorage.getItem("bawIngrijire")||"null"); if(o) ing=o; }catch(e){}
-  try{ var v=JSON.parse(localStorage.getItem("bawVremea")||"null"); if(v) vremea=v; }catch(e){}
+  try{ var o=JSON.parse(localStorage.getItem("cityzenIngrijire")||"null"); if(o) ing=o; }catch(e){}
+  try{ var v=JSON.parse(localStorage.getItem("cityzenVremea")||"null"); if(v) vremea=v; }catch(e){}
 }
 function salvIngrijire(){
   try{
-    localStorage.setItem("bawIngrijire",JSON.stringify(ing));
-    localStorage.setItem("bawVremea",JSON.stringify(vremea));
+    localStorage.setItem("cityzenIngrijire",JSON.stringify(ing));
+    localStorage.setItem("cityzenVremea",JSON.stringify(vremea));
   }catch(e){}
 }
 /* Temperatura exterioara cere internet, iar unitatea din bord n-are. Se ia cand
@@ -832,7 +883,11 @@ function pictaInsigne(){
   /* Pana gasim senzorii din pachet, "rece" se leaga de temperatura de afara.
      Si NU se acorda cand temperatura lipseste: o insigna data pe baza a nimic
      nu invata nimic, doar strica increderea in toate celelalte. */
-  var stiuTemp=vremea.t!=null&&Date.now()-vremea.cand<6*3600000;
+  /* De cand avem senzorii din pachet, temperatura lui bate temperatura de
+     afara: e chiar marimea care conteaza pentru celule. Vremea ramane rezerva
+     pentru cand cadrele inca n-au venit. */
+  var stiuTemp=(V.temp&&V.temp.length>0)||
+               (vremea.t!=null&&Date.now()-vremea.cand<6*3600000);
   lista.push({k:"rece", are:stiuTemp&&ing.dimineti>=3,
     d:!stiuTemp?"aștept temperatura de afară"
       :(ing.dimineti>=3?("blând sub 5 °C, "+ing.dimineti+" dimineți"):"blând pe frig, "+ing.dimineti+" din 3")});
@@ -982,6 +1037,35 @@ function pictaCelule(){
   G("clNota").textContent="linia de jos e "+nr(jos/1000,3)+" V · fiecare diviziune "+
     Math.round(intv/2)+" mV";
 
+  pune("clAh",V.ahRamasi,1,"Ah");
+  if(V.capacitate!=null){
+    G("clCap").innerHTML=nr(V.capacitate,0)+'<span class="un">Ah</span>';
+    /* Capacitatea de fabrica nu e scrisa nicaieri in masina; iese din kWh-ii
+       alesi in setari, impartiti la tensiunea nominala a celor 38 de celule
+       LFP. Se citeste direct din lista: aplicatia asta n-o tine altundeva. */
+    var kwh=parseInt(G("sKwh").value,10)||13;
+    var nom=(kwh*1000)/((harta.celuleN||38)*3.2);
+    var proc=V.capacitate/nom*100;
+    G("clCapSub").textContent="din "+Math.round(nom)+" Ah de fabrică · "+
+      Math.round(proc)+" %"+(V.soh!=null?" · BMS spune "+V.soh+" %":"");
+    G("clCapSub").style.color=proc<85?"var(--cald)":"";
+  } else {
+    G("clCap").textContent="—";
+    G("clCapSub").textContent=(V.soc!=null&&V.soc<10)?"prea descărcată ca să socotesc"
+                                                     :"aștept procentul";
+  }
+  var t=V.temp||[];
+  if(t.length){
+    var tn=Math.min.apply(null,t), tx=Math.max.apply(null,t);
+    G("clTemp").innerHTML=tn+(tx>tn?"–"+tx:"")+'<span class="un">°C</span>';
+    G("clTempSub").textContent=t.length+" senzori · diferență "+(tx-tn)+" °C"+
+      ((tx-tn)>8?" · prea mare":"");
+    G("clTempSub").style.color=(tx-tn)>8?"var(--cald)":"";
+  } else {
+    G("clTemp").textContent="—";
+    G("clTempSub").textContent="aștept cadrele de temperatură";
+  }
+
   var ab=mx-mn;
   G("abVal").innerHTML=ab+'<span class="un">mV</span>';
   var bun=ab<25, med=ab<80;
@@ -998,14 +1082,14 @@ function pictaCelule(){
    cifra de acum spune putin: 15 la 16 la 17 mV intr-o luna e o poveste. */
 var istAb=[];
 function incarcaIstAb(){
-  try{ istAb=JSON.parse(localStorage.getItem("bawIstAb")||"[]"); }catch(e){ istAb=[]; }
+  try{ istAb=JSON.parse(localStorage.getItem("cityzenIstAb")||"[]"); }catch(e){ istAb=[]; }
 }
 function pictaIstoricAbatere(ab){
   var zi=ziua();
   if(!istAb.length||istAb[istAb.length-1].zi!==zi){
     istAb.push({zi:zi,ab:ab,cand:Date.now()});
     if(istAb.length>120) istAb.shift();
-    try{ localStorage.setItem("bawIstAb",JSON.stringify(istAb)); }catch(e){}
+    try{ localStorage.setItem("cityzenIstAb",JSON.stringify(istAb)); }catch(e){}
   }
   function inapoi(zile){
     var t=Date.now()-zile*24*3600000, g=null;
@@ -1062,25 +1146,25 @@ G("btnHarta").addEventListener("click",function(){
   try{
     var h=JSON.parse(G("sHarta").value);
     if(!h.semnale||!h.semnale.length) throw new Error("lipsește lista 'semnale'");
-    localStorage.setItem("bawHartaV1",JSON.stringify(h)); harta=h;
+    localStorage.setItem("cityzenHarta",JSON.stringify(h)); harta=h;
     G("sHartaStare").textContent=h.semnale.length+" semnale"; picta();
   }catch(e){ G("sHartaStare").textContent="nu se poate citi: "+e.message; }
 });
 G("btnHartaImp").addEventListener("click",function(){
   harta=JSON.parse(JSON.stringify(HARTA_IMP));
-  localStorage.removeItem("bawHartaV1");
+  localStorage.removeItem("cityzenHarta");
   G("sHarta").value=JSON.stringify(harta,null,1);
   G("sHartaStare").textContent="harta din fabrică"; picta();
 });
 G("btnJos").addEventListener("click",function(){
   var text=JSON.stringify({
-    unealta:"BAW bord "+VERSIUNE, cand:new Date().toISOString(),
+    unealta:"Allview Cityzen bord "+VERSIUNE, cand:new Date().toISOString(),
     adaptor:numeAd, harta:harta, azi:azi, anterioare:anterioare,
     cursa:{km:cursa.km,wh:cursa.wh,whRec:cursa.whRec,bare:cursa.bare},
     cadre:cadre, brute:brute, jurnal:LOG
   });
   var d=new Date();
-  var n="baw_bord_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+
+  var n="cityzen_bord_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+
     String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+
     String(d.getMinutes()).padStart(2,"0")+".json";
   var bl=new Blob([text],{type:"application/json"});
@@ -1103,7 +1187,7 @@ setInterval(bucla,300);
 setInterval(function(){ tic(); picta(); },1000);
 window.AV={ceasuri:[bucla,tic]};
 window.__tic=function(){ window.__ultimaBataie=Date.now(); bucla(); tic(); };
-scrie("BAW bord "+VERSIUNE+" · harta din fabrică, "+HARTA_IMP.semnale.length+" semnale");
+scrie("Allview Cityzen bord "+VERSIUNE+" · harta din fabrică, "+HARTA_IMP.semnale.length+" semnale");
 picta();
 })();
 </script>
