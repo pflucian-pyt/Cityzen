@@ -1,0 +1,1302 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Allview Cityzen</title>
+<!--
+  Aplicatia din bordul Allview Cityzen.
+
+  Trei file: bord, celule, setari. Ecranul unitatii e 1600x720 — lat si scund —
+  deci totul sta pe orizontala si nimic nu se deruleaza. Versiunea de teste era
+  desenata pentru telefon, in picioare, si pe ecranul asta ar fi lasat doua
+  treimi goale cu butoanele sub marginea de jos.
+
+  CE ARATA SI CE NU. Bordul de fabrica are deja tensiune, curent, procent,
+  viteza, putere, temperatura motorului si media de consum. Repetarea lor ar fi
+  spatiu irosit. Aici sta numai ce nu exista in masina: consumul instantaneu ca
+  bare, cele 38 de celule, energia pe cursa si recuperarea.
+
+  GRAFICUL ARE TREI ZONE, cu timpul ne-uniform:
+    20% stanga   cursele anterioare, o bara de cursa, gri fiindca sunt istorie
+    50% mijloc   cursa asta, rezolutie medie
+    30% dreapta  ultimele cinci minute, cea mai fina rezolutie
+  Toate trei pastreaza aceeasi scara verticala. Altfel comparatia n-ar insemna
+  nimic — iar comparatia e chiar rostul impartirii.
+
+  CONSUMUL INSTANTANEU NU EXISTA SUB 3 km/h. kWh/100km inseamna impartire la
+  kilometri, iar la viteza aproape zero iese infinit. In loc sa desenam bare
+  uriase cand stai la semafor, intervalul se lasa gol si cifra arata liniuta.
+
+  HARTA SEMNALELOR e scrisa mai jos ca valoare implicita, ca la prima pornire
+  sa vezi cifre, nu liniute. Se poate schimba din setari fara sa reconstruiesti
+  aplicatia: cand mai gasim un octet, se schimba harta, nu programul.
+-->
+<style>
+:root{--fundal:#0B1219;--panou:#131E28;--panou2:#0F1922;--linie:#22323F;
+  --text:#E8F0F6;--text2:#A7B8C6;--text3:#6C8093;
+  --rece:#3BA3E8;--cald:#E08A3C;--viu:#35C08C;--rosu:#E2664A}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:var(--fundal);color:var(--text);
+  font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:8px 16px;
+  background:var(--panou);border-bottom:1px solid var(--linie)}
+h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.01em}
+.led{width:10px;height:10px;border-radius:50%;background:var(--text3);flex:0 0 auto}
+.led.viu{background:var(--viu)} .led.eroare{background:var(--rosu)} .led.astept{background:#D9A400}
+#stare{font-size:14px;color:var(--text2)}
+#file{margin-left:auto;display:flex;gap:4px;background:var(--panou2);border-radius:10px;padding:3px}
+#file button{font:inherit;font-size:15px;font-weight:600;border:0;border-radius:8px;
+  padding:7px 20px;background:transparent;color:var(--text2);cursor:pointer}
+#file button.on{background:var(--rece);color:#06131C}
+#file button:focus-visible{outline:2px solid var(--cald);outline-offset:2px}
+.pag{display:none;flex:1;min-height:0} .pag.on{display:flex;flex-direction:column}
+
+/* banda de medii */
+#banda{display:flex;align-items:stretch;padding:9px 16px 8px;border-bottom:1px solid var(--linie);gap:0}
+.md{padding:0 18px;border-left:1px solid var(--linie)}
+.md:first-child{padding-left:0;border-left:0}
+.et{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
+.vl{font-size:30px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.un{font-size:13px;font-weight:400;color:var(--text2);margin-left:3px}
+.sb{font-size:13px;color:var(--text2);margin-top:1px}
+
+/* zona centrala */
+#mijloc{flex:1;display:flex;min-height:0}
+#graf{flex:1;display:flex;flex-direction:column;min-width:0;padding:10px 8px 8px 16px}
+.leg{display:flex;gap:18px;font-size:13px;color:var(--text2);margin-bottom:6px}
+.pt{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+#zona{flex:1;display:flex;gap:8px;min-height:0}
+#bare{flex:1;display:flex;min-width:0}
+.zn{display:flex;gap:2px;height:100%}
+.zn.z1{width:20%;border-right:1px dashed var(--linie);padding-right:5px}
+.zn.z2{width:60%;border-right:1px dashed var(--linie);padding-right:5px}
+.zn.z3{width:40%;padding-left:5px;gap:1px}
+#fata{width:19%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border-right:1px dashed var(--linie);padding:6px}
+#fataSvg{width:64%;max-width:96px}
+#fataNume{font-size:14px;font-weight:600;margin-top:7px;text-align:center}
+#fataSub{font-size:12px;color:var(--text3);margin-top:2px;text-align:center;line-height:1.35}
+#batCut{display:flex;align-items:center;gap:11px;border-radius:12px;padding:9px 11px;
+  background:var(--panou);border:1px solid var(--linie)}
+#batCut.cere{background:#2A2008;border-color:#5A4410}
+#batSvg{width:74px;flex:0 0 auto}
+#batTitlu{font-size:13px;font-weight:600}
+#batText{font-size:11px;color:var(--text2);line-height:1.45;margin-top:2px}
+.insig{display:flex;align-items:center;gap:8px;border-radius:10px;padding:5px 9px;
+  background:#0F2A20;border:1px solid #1B4A38}
+.insig.nu{background:var(--panou);border-color:var(--linie);opacity:.55}
+.insig svg{width:21px;height:21px;flex:0 0 auto}
+.insig .n{font-size:12px;font-weight:600}
+.insig .d{font-size:10px;color:var(--text2)}
+#banda2{display:flex;height:9px;border-radius:5px;overflow:hidden;margin-top:6px}
+#cursor{position:relative;height:9px;margin-top:-1px}
+#cursor i{position:absolute;width:2px;height:9px;background:var(--text);display:block}
+#raportCut{position:absolute;inset:0;background:var(--fundal);z-index:5;display:none;
+  flex-direction:column;padding:12px 16px}
+#raportCut.on{display:flex}
+.gol{flex:1;display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:var(--text3);text-align:center;padding:0 8px}
+.cl{flex:1;display:flex;flex-direction:column;min-width:0}
+.sus{height:72%;display:flex;align-items:flex-end}
+.jos{height:28%}
+.sus i,.jos i{display:block;width:100%;border-radius:2px 2px 0 0}
+.jos i{border-radius:0 0 2px 2px}
+#axa{display:flex;flex-direction:column;justify-content:space-between;
+  font-size:12px;color:var(--text3);width:34px;font-variant-numeric:tabular-nums}
+#subgraf{display:flex;margin-top:5px;font-size:13px;padding-right:42px}
+#casete{width:27%;padding:10px 16px 8px 8px;display:flex;flex-direction:column;gap:7px}
+.cs{background:var(--panou);border:1px solid var(--linie);border-radius:12px;padding:8px 12px}
+.cs .vl{font-size:26px}
+
+/* celule */
+#pCelule{padding:10px 16px 12px}
+#capCel{display:flex;gap:26px;margin-bottom:8px}
+#barCel{flex:1;display:flex;align-items:flex-end;gap:3px;min-height:0;
+  border-bottom:2px solid var(--linie);padding-bottom:0}
+#barCel b{flex:1;background:var(--rece);border-radius:2px 2px 0 0;min-height:2px;display:block}
+#barCel b.min{background:var(--rosu)} #barCel b.max{background:var(--viu)}
+#scaraCel{display:flex;flex-direction:column;justify-content:space-between;
+  font-size:12px;color:var(--text3);width:52px;text-align:right;padding-right:7px;
+  font-variant-numeric:tabular-nums}
+
+/* setari */
+#pSetari{padding:12px 16px;overflow-y:auto}
+.rand{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button.act,button.sec{font:inherit;font-size:15px;font-weight:600;border-radius:10px;
+  padding:9px 16px;cursor:pointer;border:1px solid var(--linie)}
+button.act{background:var(--rece);color:#06131C;border-color:var(--rece)}
+button.sec{background:var(--panou);color:var(--text2)}
+button:disabled{opacity:.45;cursor:default}
+button.act:focus-visible,button.sec:focus-visible{outline:2px solid var(--cald);outline-offset:2px}
+select,textarea{font:inherit;font-size:14px;color:var(--text);background:var(--panou2);
+  border:1px solid var(--linie);border-radius:9px;padding:8px 10px}
+textarea{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.mic{margin:0;font-size:13px;color:var(--text3);line-height:1.45}
+.tl{background:var(--panou);border:1px solid var(--linie);border-radius:12px;
+  padding:11px 14px;margin-bottom:10px}
+.lbl{margin:0 0 7px;font-size:12px;font-weight:700;letter-spacing:.06em;
+  color:var(--text3);text-transform:uppercase}
+pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
+  white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="led" id="led"></span>
+  <h1>Allview Cityzen</h1>
+  <span id="stare">neconectat</span>
+  <div id="file">
+    <button class="on" data-p="Bord">bord</button>
+    <button data-p="Celule">celule</button>
+    <button data-p="Setari">setări</button>
+  </div>
+</header>
+
+<section class="pag on" id="pBord">
+  <div id="banda">
+    <div class="md"><div class="et">acum</div>
+      <div class="vl" id="mAcum">—<span class="un">kWh/100km</span></div></div>
+    <div class="md"><div class="et">medie cursă</div>
+      <div class="vl" id="mCursa">—<span class="un">kWh/100km</span></div>
+      <div class="sb" id="mCursaKm">— km</div></div>
+    <div class="md"><div class="et">azi</div>
+      <div style="display:flex;align-items:baseline;gap:16px">
+        <div class="vl" id="mAzi">—<span class="un">kWh/100km</span></div>
+        <div class="vl" id="mAziKm">—<span class="un">km</span></div>
+      </div>
+      <div class="sb" id="mAziSub">— curse</div></div>
+    <div class="md" style="margin-left:auto;text-align:right"><div class="et">baterie</div>
+      <div class="vl" id="mSoc">—<span class="un">%</span></div></div>
+    <div class="md" style="text-align:right"><div class="et">autonomie</div>
+      <div class="vl" id="mAut">—<span class="un">km</span></div></div>
+  </div>
+
+  <div id="mijloc">
+    <div id="fata">
+      <div id="fataSvg"></div>
+      <div id="fataNume">—</div>
+      <div id="fataSub">—</div>
+    </div>
+    <div id="graf">
+      <div class="leg">
+        <span><i class="pt" style="background:var(--cald)"></i>consumat</span>
+        <span><i class="pt" style="background:var(--viu)"></i>recuperat</span>
+      </div>
+      <div id="zona">
+        <div id="bare">
+          <div class="zn z2" id="z2"></div>
+          <div class="zn z3" id="z3"></div>
+        </div>
+        <div id="axa"><span id="ax1">45</span><span id="ax2">30</span><span id="ax3">15</span>
+          <span style="color:var(--text2)">0</span><span style="color:var(--viu)" id="ax5">−15</span></div>
+      </div>
+      <div id="subgraf">
+        <span style="width:60%;color:var(--text2)" id="sgCursa">cursa asta</span>
+        <span style="width:40%;text-align:right;color:var(--text2)">ultimele 5 minute</span>
+      </div>
+      <div style="text-align:right;font-size:12px;color:var(--text3);padding-right:42px">
+        scara: kWh/100km</div>
+    </div>
+
+    <div id="casete">
+      <div class="cs"><div class="et">putere acum</div>
+        <div class="vl" id="cPutere">—<span class="un">kW</span></div>
+        <div class="sb" id="cUI">— V · — A</div></div>
+      <div class="rand" style="gap:7px">
+        <div class="cs" style="flex:1"><div class="et">cursa asta</div>
+          <div class="vl" style="font-size:20px" id="cCons">—<span class="un">kWh</span></div></div>
+        <div class="cs" style="flex:1"><div class="et">recuperat</div>
+          <div class="vl" style="font-size:20px;color:var(--viu)" id="cRec">—<span class="un">kWh</span></div></div>
+      </div>
+      <div class="cs" style="margin-top:auto;display:flex;align-items:baseline;gap:10px">
+        <span class="et">abatere celule</span>
+        <span class="vl" style="font-size:19px" id="cAbat">—<span class="un">mV</span></span>
+        <span style="margin-left:auto;font-size:13px" id="cAbatS">—</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pag" id="pCelule">
+  <div id="capCel">
+    <div><div class="et">cea mai slabă</div><div class="vl" style="font-size:20px" id="clMin">—</div></div>
+    <div><div class="et">cea mai încărcată</div><div class="vl" style="font-size:20px" id="clMax">—</div></div>
+    <div><div class="et">abatere</div><div class="vl" style="font-size:20px" id="clAb">—</div></div>
+    <div><div class="et">pachet</div><div class="vl" style="font-size:20px" id="clPachet">—</div></div>
+    <div><div class="et">mai ai</div><div class="vl" style="font-size:20px" id="clAh">—</div></div>
+    <div><div class="et">capacitate</div><div class="vl" style="font-size:20px" id="clCap">—</div>
+      <div class="mic" id="clCapSub">—</div></div>
+    <div style="margin-left:auto;text-align:right"><div class="et">temperaturi</div>
+      <div class="vl" style="font-size:20px" id="clTemp">—</div>
+      <div class="mic" id="clTempSub">—</div></div>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;gap:12px">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <div style="flex:1;display:flex;min-height:0">
+        <div id="scaraCel"><span id="sc1">—</span><span id="sc2">—</span><span id="sc3">—</span></div>
+        <div id="barCel"></div>
+      </div>
+    </div>
+    <div style="width:32%;border-left:1px solid var(--linie);padding-left:12px;
+         display:flex;flex-direction:column;gap:9px">
+      <div id="batCut">
+        <div id="batSvg"></div>
+        <div style="min-width:0">
+          <div id="batTitlu">—</div>
+          <div id="batText">—</div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span class="et">abatere</span>
+          <span class="vl" style="font-size:23px" id="abVal">—</span>
+          <span style="font-size:12px;margin-left:auto" id="abStare">—</span>
+        </div>
+        <div id="banda2">
+          <div style="width:31%;background:var(--viu)"></div>
+          <div style="width:37%;background:#FFC23D"></div>
+          <div style="width:32%;background:#FF8F5E"></div>
+        </div>
+        <div id="cursor"><i id="cursorI" style="left:0"></i></div>
+        <div style="display:flex;font-size:11px;color:var(--text3)">
+          <span>0</span><span style="margin-left:auto">25</span><span style="margin-left:auto">80 mV</span>
+        </div>
+      </div>
+      <div class="tl" style="margin:0;padding:8px 11px">
+        <p class="lbl" style="margin-bottom:5px">cum stătea înainte</p>
+        <div style="display:flex;align-items:baseline;gap:14px" id="istAb">
+          <span class="mic">se adună cu timpul</span>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0">
+        <p class="lbl">îngrijirea bateriei</p>
+        <div id="insigne" style="display:flex;flex-direction:column;gap:5px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;font-size:13px;color:var(--text2);margin-top:6px;padding-left:52px">
+    <span>celula 1</span>
+    <span style="margin-left:auto;color:var(--text3)" id="clNota">—</span>
+    <span style="margin-left:auto">celula <span id="clN">38</span></span>
+  </div>
+</section>
+
+<div id="raportCut">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <span style="font-size:15px;font-weight:600">cursă încheiată</span>
+    <span class="mic" id="rpOra">—</span>
+    <button class="sec" id="rpInchide" style="margin-left:auto;padding:6px 13px">Închide</button>
+  </div>
+  <div style="flex:1;display:flex;gap:14px;min-height:0">
+    <div style="width:31%;display:flex;flex-direction:column;align-items:center;
+         justify-content:center;border-right:1px solid var(--linie)">
+      <div id="rpFata" style="width:58%;max-width:120px"></div>
+      <div style="font-size:18px;font-weight:600;margin-top:6px" id="rpTitlu">—</div>
+      <div style="font-size:28px;letter-spacing:.05em;margin-top:6px" id="rpStele">—</div>
+      <div class="mic" style="margin-top:6px" id="rpCifre">—</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <p class="lbl">ce ai câștigat acum</p>
+      <div id="rpInsigne" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      <div style="margin-top:auto" class="mic" id="rpSfat">—</div>
+    </div>
+  </div>
+</div>
+
+<section class="pag" id="pSetari">
+  <div class="tl">
+    <p class="lbl">Adaptorul</p>
+    <div class="rand">
+      <button class="act" id="btnConect">Conectează</button>
+      <span class="mic" id="sAdaptor">—</span>
+    </div>
+    <div class="rand" style="margin-top:9px">
+      <span class="mic" id="sFelPunte">—</span>
+      <button class="sec" id="btnClasic" style="display:none">Treci pe Bluetooth clasic</button>
+    </div>
+    <div class="rand" style="margin-top:9px">
+      <button class="sec" id="btnRaport">Vezi diagnosticul Bluetooth</button>
+      <button class="sec" id="btnRaportJos">Descarcă diagnosticul</button>
+    </div>
+    <p class="mic" id="sRaport" style="margin-top:7px">—</p>
+    <pre id="raportBt" style="display:none;margin-top:9px;max-height:260px"></pre>
+  </div>
+  <div class="tl">
+    <p class="lbl">Mașina</p>
+    <div class="rand">
+      <span class="mic" style="width:120px">bateria, kWh</span>
+      <select id="sKwh"><option value="13">13</option><option value="17">17</option></select>
+      <span class="mic" style="margin-left:20px">mod culegere</span>
+      <button class="sec" id="btnCulege">oprit</button>
+      <button class="sec" id="btnJos">Descarcă înregistrarea</button>
+    </div>
+    <p class="mic" style="margin-top:8px">Modul culegere păstrează toate cadrele brute,
+    pentru descoperit semnale noi. Nu e nevoie de el în mersul obișnuit.</p>
+  </div>
+  <div class="tl">
+    <p class="lbl">Harta semnalelor</p>
+    <textarea id="sHarta" rows="7" spellcheck="false"></textarea>
+    <div class="rand" style="margin-top:8px">
+      <button class="act" id="btnHarta">Salvează</button>
+      <button class="sec" id="btnHartaImp">Pune harta din fabrică</button>
+      <span class="mic" id="sHartaStare">—</span>
+    </div>
+  </div>
+  <div class="tl">
+    <p class="lbl">Jurnal</p>
+    <pre id="jurnal"></pre>
+  </div>
+</section>
+
+<script>
+/* Care punte devine "Punte", inainte ca punte.js sa se incarce. Amandoua sunt
+   pornite in Kotlin; aici se alege doar care se foloseste, iar schimbarea cere
+   o singura reincarcare a paginii, nu repornirea aplicatiei. */
+(function(){
+  try{
+    var clasic = window.Comutator && window.Comutator.clasic();
+    window.Punte = clasic ? (window.PunteSpp || window.PunteBle)
+                          : (window.PunteBle || window.PunteSpp);
+    window.__felPunte = clasic ? "clasic" : "ble";
+  }catch(e){}
+})();
+</script>
+<script src="punte.js"></script>
+<script>
+
+/* Masina se cheama Allview Cityzen, nu BAW — numele s-a schimbat peste tot,
+   inclusiv cheile de stocare. Ce s-a adunat sub numele vechi se muta o singura
+   data, ca sa nu se piarda istoricul, apoi cheile vechi se sterg. */
+(function(){
+  var per=[["bawIstoric","cityzenIstoric"],["bawIngrijire","cityzenIngrijire"],["bawIstAb","cityzenIstAb"],["bawVremea","cityzenVremea"],["bawHartaV1","cityzenHarta"]];
+  per.forEach(function(p){
+    try{
+      var v=localStorage.getItem(p[0]);
+      if(v!==null&&localStorage.getItem(p[1])===null) localStorage.setItem(p[1],v);
+      if(v!==null) localStorage.removeItem(p[0]);
+    }catch(e){}
+  });
+})();
+(function(){
+"use strict";
+var G=function(i){ return document.getElementById(i); };
+var VERSIUNE="1.0";
+
+/* ============================================ harta din fabrica
+   Ce s-a gasit pana acum pe magistrala Allview Cityzen: CAN 29 biti, 500 kbit/s, numere
+   little-endian. Se poate inlocui din setari fara reconstruit aplicatia. */
+var HARTA_IMP={
+  masina:"Allview Cityzen",
+  celuleCadre:["18FD90F3","18FD91F3","18FD92F3","18FD93F3","18FD94F3",
+               "18FD95F3","18FD96F3","18FD97F3","18FD98F3","18FD99F3"],
+  celuleN:38,
+  /* Gasite pe 14 septembrie: aceeasi sursa F3, acelasi tipar ca celulele.
+     Opt senzori intr-un cadru si inca doi in al doilea, zece in total.
+     Decalajul -40 e conventia obisnuita in auto si dadea 16 °C pe o masina
+     racita peste noapte in septembrie. Se confirma la primul drum: daca urca
+     spre 19-22 °C, e bun; daca ar fi valoare directa, ar insemna 56 °C pe o
+     masina rece, ceea ce e imposibil. */
+  tempCadre:["18FDD0F3","18FDE0F3"],
+  tempN:10, tempPlus:-40,
+  semnale:[
+    {rol:"tensiune", id:"1803D0F3", octet:4, lung:2, ordine:"le", factor:0.1},
+    {rol:"curent",   id:"1803D0F3", octet:6, lung:2, ordine:"le", factor:0.1, plus:-1000},
+    /* 1808D0F3, descifrat pe 14 septembrie prin comparatie intre sapte
+       sesiuni: [0-1] amperore ramasi la scara 0,01 · [2] procent · [3] stare
+       de sanatate · [6-7] tensiunea medie pe celula. Impartind amperoreii la
+       procent a iesit de sapte ori aceeasi capacitate, 104-107 Ah. */
+    {rol:"soc",      id:"1808D0F3", octet:2, lung:1, factor:1},
+    {rol:"ahRamasi", id:"1808D0F3", octet:0, lung:2, ordine:"le", factor:0.01},
+    {rol:"soh",      id:"1808D0F3", octet:3, lung:1, factor:1},
+    {rol:"celMed",   id:"1808D0F3", octet:6, lung:2, ordine:"le", factor:0.001},
+    {rol:"viteza",   id:"1801D9D0", octet:2, lung:1, factor:1},
+    {rol:"rpm",      id:"1801D0F8", octet:0, lung:2, ordine:"le", factor:1, plus:-12000},
+    {rol:"celMax",   id:"1802D0F3", octet:2, lung:2, ordine:"le", factor:0.001},
+    {rol:"celMin",   id:"1802D0F3", octet:4, lung:2, ordine:"le", factor:0.001},
+    {rol:"tMax",     id:"1802D0F3", octet:6, lung:1, factor:1, plus:-40},
+    {rol:"tMin",     id:"1802D0F3", octet:7, lung:1, factor:1, plus:-40},
+    {rol:"autonomie",id:"180217D0", octet:6, lung:1, factor:1}
+  ]
+};
+
+/* ============================================ jurnal, file */
+var LOG=[];
+function scrie(t){
+  LOG.push(new Date().toLocaleTimeString("ro-RO")+"  "+t);
+  if(LOG.length>200) LOG.shift();
+  var j=G("jurnal"); if(j) j.textContent=LOG.slice(-30).reverse().join("\n");
+}
+function setStare(t,c){ G("stare").textContent=t; G("led").className="led"+(c?" "+c:""); }
+document.querySelectorAll("#file button").forEach(function(b){
+  b.addEventListener("click",function(){
+    document.querySelectorAll("#file button").forEach(function(x){ x.classList.remove("on"); });
+    document.querySelectorAll(".pag").forEach(function(x){ x.classList.remove("on"); });
+    b.classList.add("on"); G("p"+b.dataset.p).classList.add("on");
+    picta();
+  });
+});
+
+/* ============================================ Bluetooth */
+var SRV=["0000fff0-0000-1000-8000-00805f9b34fb","0000ffe0-0000-1000-8000-00805f9b34fb",
+  "000018f0-0000-1000-8000-00805f9b34fb","0000ffe5-0000-1000-8000-00805f9b34fb",
+  "0000ff00-0000-1000-8000-00805f9b34fb","0000fee7-0000-1000-8000-00805f9b34fb",
+  "0000abf0-0000-1000-8000-00805f9b34fb","6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+  "0000180a-0000-1000-8000-00805f9b34fb","0000180f-0000-1000-8000-00805f9b34fb",
+  "e7810a71-73ae-499d-8c15-faa9aef0c3f2","bae80001-4f05-4503-8e65-3af1f7329d1f"];
+var chW=null,chN=null,conectat=false,tampon="",astept=null,ascultator=null,numeAd=null;
+
+function primeste(ev){
+  var v=ev.target.value,t="";
+  for(var i=0;i<v.byteLength;i++) t+=String.fromCharCode(v.getUint8(i));
+  if(ascultator){ ascultator(t); return; }
+  tampon+=t;
+  if(tampon.indexOf(">")>=0){
+    var r=tampon; tampon="";
+    if(astept){ var f=astept; astept=null; f(r); }
+  }
+}
+function brut(s){
+  var o=new TextEncoder().encode(s);
+  return chW.writeValueWithoutResponse?chW.writeValueWithoutResponse(o):chW.writeValue(o);
+}
+function cere(c,to){
+  if(!conectat) return Promise.resolve(null);
+  return new Promise(function(rez){
+    var gata=false;
+    function fin(r){ if(gata) return; gata=true; astept=null; rez(r); }
+    astept=fin; tampon="";
+    brut(c+"\r").catch(function(){ fin(null); });
+    setTimeout(function(){ fin(null); },to||900);
+  });
+}
+/* ATMA curge la nesfarsit si nu scoate prompt; orice caracter il opreste. */
+function asculta(ms,peRand){
+  if(!conectat) return Promise.resolve();
+  return new Promise(function(rez){
+    var rest="";
+    ascultator=function(b){
+      rest+=b; var r=rest.split(/[\r\n]+/); rest=r.pop();
+      r.forEach(function(x){ x=x.trim(); if(x&&x!==">"){ try{ peRand(x); }catch(e){} } });
+    };
+    tampon=""; brut("ATMA\r").catch(function(){});
+    setTimeout(function(){
+      brut("\r").catch(function(){});
+      setTimeout(function(){ ascultator=null; tampon=""; rez(); },260);
+    },ms);
+  });
+}
+function conecteaza(){
+  setStare("caut adaptorul","astept");
+  G("btnConect").disabled=true;
+  return (navigator.bluetooth
+    ? navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:SRV})
+    : Promise.reject(new Error("browserul nu are Bluetooth")))
+  .then(function(d){
+    numeAd=d.name||"adaptor fără nume";
+    setStare("mă leg la "+numeAd,"astept");
+    d.addEventListener("gattserverdisconnected",function(){
+      conectat=false; setStare("deconectat","eroare");
+      G("btnConect").textContent="Reconectează"; G("btnConect").disabled=false;
+      scrie("adaptorul s-a deconectat");
+    });
+    return d.gatt.connect();
+  })
+  .then(function(s){ return s.getPrimaryServices(); })
+  .then(function(sv){
+    var l=Promise.resolve();
+    sv.forEach(function(s){ l=l.then(function(){
+      return s.getCharacteristics().then(function(cs){
+        cs.forEach(function(c){
+          if(!chW&&(c.properties.write||c.properties.writeWithoutResponse)) chW=c;
+          if(!chN&&c.properties.notify) chN=c;
+        });
+      }).catch(function(){});
+    }); });
+    return l;
+  })
+  .then(function(){
+    if(!chW||!chN) throw new Error("adaptorul n-are caracteristicile așteptate");
+    return chN.startNotifications();
+  })
+  .then(function(){
+    chN.addEventListener("characteristicvaluechanged",primeste);
+    conectat=true;
+    setStare("conectat · "+numeAd,"viu");
+    G("btnConect").textContent="Reconectează"; G("btnConect").disabled=false;
+    G("sAdaptor").textContent=numeAd;
+    scrie("legătura e făcută cu "+numeAd);
+    return pregateste();
+  })
+  .catch(function(e){
+    conectat=false; setStare("nu s-a conectat","eroare");
+    G("btnConect").textContent="Conectează"; G("btnConect").disabled=false;
+    G("sAdaptor").textContent=e.message;
+    scrie("EROARE: "+e.message);
+  });
+}
+G("btnConect").addEventListener("click",function(){ conecteaza(); });
+
+/* CAN 29 biti, 500, cu filtrul deschis. ATCF/ATCM pe opt zerouri: fara ele,
+   adaptorul lasa sa treaca doar raspunsurile OBD si magistrala pare moarta. */
+function pregateste(){
+  return cere("ATZ",3500).then(function(){ return cere("ATE0"); })
+    .then(function(){ return cere("ATL0"); }).then(function(){ return cere("ATS1"); })
+    .then(function(){ return cere("ATH1"); }).then(function(){ return cere("ATCAF0"); })
+    .then(function(){ return cere("ATSP7",2500); })
+    .then(function(){ return cere("ATCF 00000000",900); })
+    .then(function(){ return cere("ATCM 00000000",900); })
+    .then(function(){ scrie("ascult pe CAN 29 biți, 500 kbit/s"); });
+}
+
+/* ============================================ cadrele */
+function desfaCadru(r){
+  var p=r.replace(/\s+/g," ").trim().split(" ");
+  if(p.length<2) return null;
+  var id,prim;
+  if(/^[0-9A-F]{3}$|^[0-9A-F]{8}$/i.test(p[0])){ id=p[0].toUpperCase(); prim=1; }
+  else if(p.length>=5&&/^[0-9A-F]{2}$/i.test(p[0])&&/^[0-9A-F]{2}$/i.test(p[1])
+          &&/^[0-9A-F]{2}$/i.test(p[2])&&/^[0-9A-F]{2}$/i.test(p[3])){
+    id=(p[0]+p[1]+p[2]+p[3]).toUpperCase(); prim=4;
+  } else return null;
+  var o="";
+  for(var i=prim;i<p.length;i++){
+    if(!/^[0-9A-F]{2}$/i.test(p[i])) return null;
+    o+=p[i].toUpperCase();
+  }
+  return o?{id:id,oct:o}:null;
+}
+var cadre={};            // id -> hex, ultimul primit
+var brute=[];            // numai in mod culegere
+function primesteCadru(c){
+  cadre[c.id]=c.oct;
+  if(culegere){
+    brute.push([Math.round((Date.now()-pornitLa)/1000),c.id,c.oct]);
+    if(brute.length>60000) brute.splice(0,20000);
+  }
+}
+
+/* ============================================ harta si valorile */
+var harta=null;
+function incarcaHarta(){
+  try{ harta=JSON.parse(localStorage.getItem("cityzenHarta")||"null"); }catch(e){ harta=null; }
+  if(!harta||!harta.semnale) harta=JSON.parse(JSON.stringify(HARTA_IMP));
+  G("sHarta").value=JSON.stringify(harta,null,1);
+}
+function citeste(s){
+  var h=cadre[s.id];
+  if(!h) return null;
+  var lung=s.lung||1,poz=(s.octet||0)*2;
+  if(poz+lung*2>h.length) return null;
+  var b=[];
+  for(var i=0;i<lung;i++) b.push(parseInt(h.substr(poz+i*2,2),16));
+  if(s.ordine==="le") b.reverse();
+  var v=0; b.forEach(function(x){ v=v*256+x; });
+  if(s.semn){ var cap=Math.pow(2,lung*8); if(v>=cap/2) v-=cap; }
+  return v*(s.factor===undefined?1:s.factor)+(s.plus||0);
+}
+var V={};
+function reciteste(){
+  V={};
+  harta.semnale.forEach(function(s){ if(s.rol) V[s.rol]=citeste(s); });
+  /* cele 38 de celule, patru pe cadru, ultimul cu doua */
+  var c=[],n=harta.celuleN||38;
+  (harta.celuleCadre||[]).forEach(function(id){
+    var h=cadre[id]; if(!h) return;
+    for(var i=0;i<4&&c.length<n;i++){
+      if(i*4+4>h.length) break;
+      var lo=parseInt(h.substr(i*4,2),16),hi=parseInt(h.substr(i*4+2,2),16);
+      var mv=hi*256+lo;
+      if(mv>1000&&mv<5000) c.push(mv);
+    }
+  });
+  V.celule=c;
+  var t=[],nt=harta.tempN||10,pt=(harta.tempPlus===undefined?-40:harta.tempPlus);
+  (harta.tempCadre||[]).forEach(function(id){
+    var h=cadre[id]; if(!h) return;
+    for(var i=0;i<8&&t.length<nt;i++){
+      if(i*2+2>h.length) break;
+      var v=parseInt(h.substr(i*2,2),16);
+      if(v>0) t.push(v+pt);
+    }
+  });
+  V.temp=t;
+  if(V.tensiune!=null&&V.curent!=null) V.putere=V.tensiune*V.curent/1000;
+  /* Capacitatea iese din impartire, nu din vreun octet: amperoreii ramasi
+     supra procent. Sub zece la suta raportul se duce, fiindca si o eroare de
+     un procent conteaza mult acolo — deci nu se socoteste. */
+  if(V.ahRamasi!=null&&V.soc!=null&&V.soc>=10) V.capacitate=V.ahRamasi/V.soc*100;
+}
+
+/* ============================================ socoteala consumului
+
+   Se aduna pe intervale de zece secunde. Consumul instantaneu e energia din
+   interval impartita la distanta din interval — deci NU exista cand masina
+   sta. Sub trei kilometri pe ora intervalul se lasa gol, in loc sa desenam o
+   bara uriasa de fiecare data cand astepti la semafor. */
+var PAS=10000;
+var pornitLa=Date.now(), culegere=false;
+var ultTic=0, intv={t:0,wh:0,whRec:0,km:0};
+var cursa={start:Date.now(),km:0,wh:0,whRec:0,bare:[],activa:false,ultMiscare:0};
+var azi={zi:"",km:0,wh:0,whRec:0,curse:0};
+var anterioare=[];
+
+function ziua(){ var d=new Date(); return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
+function incarcaIstoric(){
+  try{
+    var o=JSON.parse(localStorage.getItem("cityzenIstoric")||"null");
+    if(o){ azi=o.azi||azi; anterioare=o.anterioare||[]; }
+  }catch(e){}
+  if(azi.zi!==ziua()) azi={zi:ziua(),km:0,wh:0,whRec:0,curse:0};
+}
+var ultSalv=0;
+function salveaza(f){
+  var a=Date.now(); if(!f&&a-ultSalv<15000) return; ultSalv=a;
+  try{ localStorage.setItem("cityzenIstoric",JSON.stringify({azi:azi,anterioare:anterioare.slice(-5)})); }
+  catch(e){}
+}
+
+function tic(){
+  var acum=Date.now();
+  if(!ultTic){ ultTic=acum; return; }
+  var dt=(acum-ultTic)/1000; ultTic=acum;
+  if(dt<=0||dt>30) return;
+  reciteste();
+  var vit=V.viteza, put=V.putere;
+  if(vit==null||put==null) return;
+
+  var km=vit*dt/3600;
+  var wh=put*1000*dt/3600;
+  intv.km+=km;
+  if(wh>=0) intv.wh+=wh; else intv.whRec+=-wh;
+
+  /* o cursa incepe cand masina se misca si se incheie dupa trei minute de stat */
+  if(vit>3){ cursa.ultMiscare=acum; G("raportCut").classList.remove("on");
+    if(!cursa.activa){ cursa.activa=true; cursa.start=acum; azi.curse++; } }
+  else if(cursa.activa&&acum-cursa.ultMiscare>180000){ incheieCursa(); }
+
+  if(cursa.activa){
+    cursa.km+=km;
+    if(wh>=0) cursa.wh+=wh; else cursa.whRec+=-wh;
+    azi.km+=km;
+    if(wh>=0) azi.wh+=wh; else azi.whRec+=-wh;
+  }
+
+  urmaresteIngrijire();
+  intv.t+=dt*1000;
+  if(intv.t>=PAS){
+    var c=null,r=null;
+    if(intv.km>0.005){
+      c=(intv.wh/1000)/intv.km*100;
+      r=(intv.whRec/1000)/intv.km*100;
+    }
+    cursa.bare.push({c:c,r:r});
+    if(cursa.bare.length>2000) cursa.bare.splice(0,500);
+    intv={t:0,wh:0,whRec:0,km:0};
+  }
+  salveaza(false);
+}
+function aratRaport(km,med){
+  var m=mediaIstorica().v;
+  var i=2;
+  if(m>0){ var r=med/m; i=0; while(i<FETE.length-1&&r>=FETE[i].prag) i++; }
+  var rec=anterioare.length?Math.min.apply(null,anterioare.map(function(x){ return x.med; })):null;
+  var stele=Math.max(1,6-(i+1));
+  G("rpFata").innerHTML=desenFata(FETE[i]);
+  G("rpTitlu").textContent=(rec!=null&&med<rec)?"record personal!":FETE[i].nume;
+  G("rpStele").textContent="★★★★★".slice(0,stele)+"☆☆☆☆☆".slice(0,5-stele);
+  G("rpOra").textContent=new Date().toLocaleTimeString("ro-RO").slice(0,5);
+  G("rpCifre").textContent=nr(med,1)+" kWh/100km · "+nr(km,1)+" km";
+  var bg=[];
+  if(med<9) bg.push({n:"Picior ușor",d:"sub 9 kWh/100km"});
+  var pr=cursa.wh>0?cursa.whRec/cursa.wh*100:0;
+  if(pr>20) bg.push({n:"Recuperator",d:Math.round(pr)+" % recuperat"});
+  G("rpInsigne").innerHTML=bg.length?bg.map(function(x){
+    return '<div class="insig"><div><div class="n">'+x.n+'</div><div class="d">'+x.d+'</div></div></div>';
+  }).join(""):'<span class="mic">nicio insignă în cursa asta</span>';
+  G("rpSfat").textContent=pr<10
+    ? "Ridică piciorul mai devreme înainte de stop — recuperezi în loc să pierzi."
+    : "Ai recuperat bine. Ține-o tot așa la coborâri.";
+  G("raportCut").classList.add("on");
+}
+G("rpInchide").addEventListener("click",function(){ G("raportCut").classList.remove("on"); });
+
+function incheieCursa(){
+  if(cursa.km>0.2){
+    anterioare.push({km:Math.round(cursa.km*10)/10,
+      med:Math.round((cursa.wh/1000)/cursa.km*1000)/10});
+    if(anterioare.length>5) anterioare.shift();
+    scrie("cursă încheiată: "+cursa.km.toFixed(1)+" km");
+    aratRaport(cursa.km,(cursa.wh/1000)/cursa.km*100);
+  }
+  cursa={start:Date.now(),km:0,wh:0,whRec:0,bare:[],activa:false,ultMiscare:0};
+  salveaza(true);
+}
+
+
+/* ============================================ fețele și personajul
+
+   Fata se compara cu MEDIA LUI, nu cu un ideal de fabrica. Un puști care merge
+   prin oras aglomerat n-are cum sa atinga consumul din brosura, iar o fata
+   nemultumita permanent se ignora dupa doua zile. Comparata cu propriul obicei,
+   are sens de fiecare data si se recalibreaza pe masura ce se face mai bun.
+
+   Si se schimba LENT, cu prag. Daca ar reactiona la fiecare apasare de pedala,
+   ar clipi intre stari si ar trage privirea exact cand nu trebuie. Vrei ca el
+   sa simta directia, nu sa urmareasca un indicator. */
+
+var FETE=[
+  {k:"zbori",      prag:0.80, nume:"zbori",       cul:"#00E58A", ochi:"#062B1C",
+   gura:"M32 62 Q50 84 68 62", spr:"M32 32 L42 27 M68 32 L58 27"},
+  {k:"bine",       prag:0.92, nume:"merge bine",  cul:"#3BE07A", ochi:"#072A16",
+   gura:"M33 64 Q50 80 67 64", spr:null},
+  {k:"obisnuit",   prag:1.08, nume:"ca de obicei",cul:"#1FC0FF", ochi:"#04222F",
+   gura:"M33 68 Q50 75 67 68", spr:null},
+  {k:"mult",       prag:1.25, nume:"cam mult",    cul:"#FFC23D", ochi:"#38230A",
+   gura:"M33 76 Q50 64 67 76", spr:null},
+  {k:"atentie",    prag:99,   nume:"atenție",     cul:"#FF8F5E", ochi:"#3D1A0B",
+   gura:"M32 78 Q50 63 68 78", spr:"M30 27 L44 33 M70 27 L56 33"}
+];
+function desenFata(f,r){
+  r=r||50;
+  return '<svg viewBox="0 0 100 100" role="img" aria-label="'+f.nume+'" style="width:100%">'+
+    '<circle cx="50" cy="50" r="42" fill="'+f.cul+'"/>'+
+    (f.spr?'<path d="'+f.spr+'" stroke="'+f.ochi+'" stroke-width="3.5" stroke-linecap="round" fill="none"/>':"")+
+    '<ellipse cx="37" cy="44" rx="6" ry="7.5" fill="'+f.ochi+'"/>'+
+    '<ellipse cx="63" cy="44" rx="6" ry="7.5" fill="'+f.ochi+'"/>'+
+    '<path d="'+f.gura+'" stroke="'+f.ochi+'" stroke-width="5" stroke-linecap="round" fill="none"/></svg>';
+}
+var fataAcum=2, fataCand=0;
+function alegeFata(){
+  var m=mediaIstorica(), med=m.v;
+  var ult=cursa.bare.length?cursa.bare[cursa.bare.length-1]:null;
+  var ac=(ult&&ult.c!=null)?ult.c:null;
+  if(ac==null||!med||med<=0) return;
+  var raport=ac/med, i=0;
+  while(i<FETE.length-1&&raport>=FETE[i].prag) i++;
+  /* schimbarea are nevoie si de treizeci de secunde, si de o treapta reala */
+  if(i!==fataAcum&&Date.now()-fataCand>30000){ fataAcum=i; fataCand=Date.now(); }
+  var f=FETE[fataAcum];
+  G("fataSvg").innerHTML=desenFata(f);
+  G("fataNume").textContent=f.nume;
+  G("fataSub").innerHTML=nr(ac,1)+" față de "+nr(med,1)+"<br>"+(m.aLui?"media ta":"obișnuit");
+}
+/* La prima cursa nu are cu ce se compara, iar o fata care arata liniuta o zi
+   intreaga pierde omul pentru totdeauna. Pana isi face media lui, se compara cu
+   consumul de catalog al masinii — si se scrie limpede ca nu e media lui. */
+var OBISNUIT=10;
+function mediaIstorica(){
+  if(anterioare.length){
+    var s=0; anterioare.forEach(function(x){ s+=x.med; });
+    return {v:s/anterioare.length, aLui:true};
+  }
+  if(azi.km>0.2) return {v:(azi.wh/1000)/azi.km*100, aLui:true};
+  return {v:OBISNUIT, aLui:false};
+}
+
+/* Bateria vorbeste la persoana intai: "stau sub 20% de trei zile" e o plangere
+   a ei, iar "ai lasat masina descarcata" ar fi o mustrare pentru el. La 16 ani,
+   diferenta decide daca citeste sau ignora. */
+var STARI={
+  plina:{cul:"#00E58A",ochi:"#062B1C",nivel:1,gura:"M28 57 Q50 74 72 57",
+    titlu:"Așa îmi place să dorm",
+    text:"M-ai lăsat plină. Așa îmbătrânesc cel mai încet."},
+  normala:{cul:"#1FC0FF",ochi:"#04222F",nivel:0.5,gura:"M28 60 Q50 70 72 60",
+    titlu:"Totul e în regulă",
+    text:"N-am nimic de cerut acum."},
+  flamanda:{cul:"#FF8F5E",ochi:"#FFC9B0",nivel:0.15,gura:"M28 66 Q50 54 72 66",
+    titlu:"Mi-e foame de zile întregi",
+    text:"Stau sub 20 % de trei zile. Lăsată așa mult, îmi pierd din capacitate."},
+  fierbinte:{cul:"#FF7A45",ochi:"#3D1408",nivel:0.6,gura:"M28 64 Q50 50 72 64",
+    titlu:"Sunt fierbinte",
+    text:"Tocmai am tras mult. Lasă-mă 20 de minute înainte să mă bagi în priză."},
+  rece:{cul:"#7FD4FF",ochi:"#0B3A52",nivel:0.5,gura:"M30 62 L70 62",
+    titlu:"Sunt înghețată",
+    text:"Sub 5 grade nu pot da curent mult. Mergi blând primele 5 minute."},
+  derutata:{cul:"#FFC23D",ochi:"#38230A",nivel:0.4,gura:"M26 64 Q38 58 50 64 Q62 70 74 64",
+    titlu:"Nu mai știu cât am",
+    text:"N-am mai fost plină de mult. Încarcă-mă o dată la 100 % ca să-mi dau seama iar de procent."}
+};
+function desenBaterie(st){
+  var lat=Math.max(8,Math.round(92*st.nivel));
+  return '<svg viewBox="0 0 120 80" role="img" aria-label="'+st.titlu+'" style="width:100%">'+
+    '<rect x="6" y="18" width="92" height="52" rx="10" fill="#173447"/>'+
+    '<rect x="6" y="18" width="'+lat+'" height="52" rx="10" fill="'+st.cul+'"/>'+
+    '<rect x="98" y="35" width="8" height="18" rx="3" fill="'+st.cul+'"/>'+
+    '<ellipse cx="36" cy="40" rx="5" ry="6.5" fill="'+st.ochi+'"/>'+
+    '<ellipse cx="68" cy="40" rx="5" ry="6.5" fill="'+st.ochi+'"/>'+
+    '<path d="'+st.gura.replace(/(\d+) (\d+)/g,function(m,a,b){ return a+" "+b; })+
+    '" stroke="'+st.ochi+'" stroke-width="3.6" stroke-linecap="round" fill="none"/></svg>';
+}
+function stareaBateriei(){
+  var acum=Date.now();
+  if(V.curent!=null&&V.curent<-2&&acum-ult.drumLung<20*60000) return "fierbinte";
+  var tRece=(V.temp&&V.temp.length)?Math.min.apply(null,V.temp)
+            :((vremea.t!=null&&acum-vremea.cand<6*3600000)?vremea.t:null);
+  if(tRece!=null&&tRece<5&&
+     cursa.activa&&acum-cursa.start<5*60000&&acum-ult.oprit>4*3600000) return "rece";
+  if(V.soc!=null&&V.soc<20&&ing.subJos&&acum-ing.subJos>48*3600000) return "flamanda";
+  if(ing.ultimPlin&&acum-ing.ultimPlin>28*24*3600000) return "derutata";
+  if(V.soc!=null&&V.soc>=80&&!cursa.activa) return "plina";
+  return "normala";
+}
+
+/* ============================================ îngrijirea */
+var ing={nopti:0,dimineti:0,ultimPlin:0,subJos:0,vazutAzi:""};
+var ult={drumLung:0,oprit:Date.now()};
+var vremea={t:null,cand:0};
+function incarcaIngrijire(){
+  try{ var o=JSON.parse(localStorage.getItem("cityzenIngrijire")||"null"); if(o) ing=o; }catch(e){}
+  try{ var v=JSON.parse(localStorage.getItem("cityzenVremea")||"null"); if(v) vremea=v; }catch(e){}
+}
+function salvIngrijire(){
+  try{
+    localStorage.setItem("cityzenIngrijire",JSON.stringify(ing));
+    localStorage.setItem("cityzenVremea",JSON.stringify(vremea));
+  }catch(e){}
+}
+/* Temperatura exterioara cere internet, iar unitatea din bord n-are. Se ia cand
+   prinde o retea si se tine minte cu ora. Peste sase ore o socotim necunoscuta:
+   mai bine lipsa decat gresita — o insigna data pe temperatura de alaltaieri
+   n-ar invata pe nimeni nimic. */
+function iaVremea(){
+  if(!navigator.onLine||!navigator.geolocation) return;
+  if(Date.now()-vremea.cand<30*60000) return;
+  navigator.geolocation.getCurrentPosition(function(p){
+    fetch("https://api.open-meteo.com/v1/forecast?latitude="+p.coords.latitude.toFixed(3)+
+          "&longitude="+p.coords.longitude.toFixed(3)+"&current=temperature_2m")
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var t=j&&j.current&&j.current.temperature_2m;
+        if(typeof t==="number"){
+          vremea={t:t,cand:Date.now()}; salvIngrijire();
+          scrie("afară sunt "+t.toFixed(0)+" °C");
+        }
+      }).catch(function(){});
+  },function(){},{maximumAge:600000,timeout:12000});
+}
+function urmaresteIngrijire(){
+  var acum=Date.now();
+  if(V.soc!=null){
+    if(V.soc>=98) ing.ultimPlin=acum;
+    if(V.soc<20){ if(!ing.subJos) ing.subJos=acum; } else ing.subJos=0;
+    var zi=ziua();
+    if(!cursa.activa&&V.soc>=80&&ing.vazutAzi!==zi){ ing.vazutAzi=zi; ing.nopti++; }
+  }
+  if(cursa.activa&&acum-cursa.start>10*60000) ult.drumLung=acum;
+  if(!cursa.activa) ult.oprit=acum;
+}
+var INSIGNE={
+  plina:{nume:"A dormit plină",
+    desen:'<circle cx="20" cy="20" r="19" fill="#0A3326"/><rect x="10" y="14" width="18" height="13" rx="3" fill="none" stroke="#00E58A" stroke-width="2.5"/><rect x="13" y="17" width="12" height="7" rx="1" fill="#00E58A"/><rect x="28" y="18" width="3" height="5" rx="1" fill="#00E58A"/>'},
+  rece:{nume:"Răbdare la rece",
+    desen:'<circle cx="20" cy="20" r="19" fill="#0A3326"/><path d="M20 10 L20 30 M12 15 L28 25 M28 15 L12 25" stroke="#3BE07A" stroke-width="2.5" stroke-linecap="round"/>'},
+  recalib:{nume:"Recalibrare la timp",
+    desen:'<circle cx="20" cy="20" r="19" fill="#0A3326"/><path d="M20 11 A9 9 0 1 1 12 17" stroke="#3BE07A" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M13 9 L22 12 L13 16 Z" fill="#3BE07A"/>'}
+};
+function pictaInsigne(){
+  var st=stareaBateriei();
+  var lista=[];
+  lista.push({k:"plina", are:ing.nopti>=3,
+    d:ing.nopti>=3?("peste 80 % la parcare, "+ing.nopti+" nopți"):"parcheaz-o peste 80 %"});
+  /* Pana gasim senzorii din pachet, "rece" se leaga de temperatura de afara.
+     Si NU se acorda cand temperatura lipseste: o insigna data pe baza a nimic
+     nu invata nimic, doar strica increderea in toate celelalte. */
+  /* De cand avem senzorii din pachet, temperatura lui bate temperatura de
+     afara: e chiar marimea care conteaza pentru celule. Vremea ramane rezerva
+     pentru cand cadrele inca n-au venit. */
+  var stiuTemp=(V.temp&&V.temp.length>0)||
+               (vremea.t!=null&&Date.now()-vremea.cand<6*3600000);
+  lista.push({k:"rece", are:stiuTemp&&ing.dimineti>=3,
+    d:!stiuTemp?"aștept temperatura de afară"
+      :(ing.dimineti>=3?("blând sub 5 °C, "+ing.dimineti+" dimineți"):"blând pe frig, "+ing.dimineti+" din 3")});
+  if(st!=="derutata") lista.push({k:"recalib", are:!!ing.ultimPlin,
+    d:ing.ultimPlin?"încărcată complet recent":"încarc-o o dată la 100 %"});
+  var el=G("insigne"); el.innerHTML="";
+  lista.forEach(function(x){
+    var m=INSIGNE[x.k];
+    var d=document.createElement("div");
+    d.className="insig"+(x.are?"":" nu");
+    d.innerHTML='<svg viewBox="0 0 40 40">'+m.desen+'</svg><div style="min-width:0">'+
+      '<div class="n">'+m.nume+'</div><div class="d">'+x.d+'</div></div>';
+    el.appendChild(d);
+  });
+}
+
+/* ============================================ desenul */
+function nr(v,z){ return (v==null||!isFinite(v))?"—":v.toFixed(z).replace(".",","); }
+function pune(id,v,z,un){
+  G(id).innerHTML=nr(v,z)+(un?'<span class="un">'+un+'</span>':"");
+}
+/* Cate bare intra intr-o zona, dupa latimea ei reala. Se socoteste din ecran,
+   nu se ghiceste: pe o unitate cu alta latime iese alt numar, si tot bine. */
+function cateIncap(el,latBara){
+  var l=el.clientWidth||300;
+  return Math.max(4,Math.min(60,Math.floor(l/latBara)));
+}
+function strange(bare,n){
+  if(!bare.length) return [];
+  var out=[],pas=bare.length/n;
+  for(var i=0;i<n;i++){
+    var a=Math.floor(i*pas),b=Math.max(a+1,Math.floor((i+1)*pas));
+    var sc=0,sr=0,k=0;
+    for(var j=a;j<b&&j<bare.length;j++){
+      if(bare[j].c!=null){ sc+=bare[j].c; sr+=bare[j].r||0; k++; }
+    }
+    out.push(k?{c:sc/k,r:sr/k}:{c:null,r:null});
+  }
+  return out;
+}
+function bara(val,rec,maxC,maxR,culoare){
+  var d=document.createElement("div"); d.className="cl";
+  var s=document.createElement("div"); s.className="sus";
+  var j=document.createElement("div"); j.className="jos";
+  if(val!=null&&val>0){
+    var i1=document.createElement("i");
+    i1.style.height=Math.min(100,val/maxC*100).toFixed(1)+"%";
+    i1.style.background=culoare||"var(--cald)";
+    s.appendChild(i1);
+  }
+  if(rec!=null&&rec>0){
+    var i2=document.createElement("i");
+    i2.style.height=Math.min(100,rec/maxR*100).toFixed(1)+"%";
+    i2.style.background="var(--viu)";
+    j.appendChild(i2);
+  }
+  d.appendChild(s); d.appendChild(j);
+  return d;
+}
+function pictaBord(){
+  var acum=null;
+  var ult=cursa.bare.length?cursa.bare[cursa.bare.length-1]:null;
+  if(ult&&ult.c!=null) acum=ult.c;
+  pune("mAcum",acum,1,"kWh/100km");
+  var medC=cursa.km>0.05?(cursa.wh/1000)/cursa.km*100:null;
+  pune("mCursa",medC,1,"kWh/100km");
+  G("mCursaKm").textContent=nr(cursa.km,1)+" km";
+  var medA=azi.km>0.05?(azi.wh/1000)/azi.km*100:null;
+  pune("mAzi",medA,1,"kWh/100km");
+  pune("mAziKm",azi.km,1,"km");
+  G("mAziSub").textContent=azi.curse+" curse · "+nr(azi.wh/1000,2)+" kWh";
+  pune("mSoc",V.soc,0,"%");
+  pune("mAut",V.autonomie,0,"km");
+  pune("cPutere",V.putere,1,"kW");
+  G("cUI").textContent=nr(V.tensiune,1)+" V · "+nr(V.curent,1)+" A";
+  pune("cCons",cursa.wh/1000,2,"kWh");
+  pune("cRec",cursa.whRec/1000,2,"kWh");
+
+  var ab=(V.celMax!=null&&V.celMin!=null)?Math.round((V.celMax-V.celMin)*1000):null;
+  pune("cAbat",ab,0,"mV");
+  G("cAbatS").textContent=ab==null?"—":(ab<25?"sănătos":(ab<80?"de urmărit":"cere atenție"));
+  G("cAbatS").style.color=ab==null?"var(--text3)":(ab<25?"var(--viu)":(ab<80?"var(--cald)":"var(--rosu)"));
+
+  /* scara verticala, comuna celor trei zone */
+  var toate=[];
+  anterioare.forEach(function(x){ toate.push(x.med); });
+  cursa.bare.forEach(function(x){ if(x.c!=null) toate.push(x.c); });
+  var maxC=Math.max(15,Math.ceil(Math.max.apply(null,toate.concat([15]))/15)*15);
+  var maxR=Math.max(5,maxC/3);
+  G("ax1").textContent=maxC; G("ax2").textContent=Math.round(maxC*2/3);
+  G("ax3").textContent=Math.round(maxC/3); G("ax5").textContent="−"+Math.round(maxR);
+
+  /* z1 nu mai exista: locul curselor anterioare l-a luat fata. Media lor
+     ramane pe ecran, ca numar sub fata, nu ca bare. */
+  var z2=G("z2"),z3=G("z3");
+  z2.innerHTML=""; z3.innerHTML="";
+
+  /* O zona goala e mai rea decat una plina cu putin: jumatate din grafic alb,
+     fara nicio explicatie, arata ca un defect. Se scrie de ce e goala. */
+  function spune(el,text){
+    var d=document.createElement("div"); d.className="gol"; d.textContent=text;
+    el.appendChild(d);
+  }
+
+  var n3=cateIncap(z3,9), n2=cateIncap(z2,7);
+  var cate5=Math.round(300000/PAS);
+  var recent=cursa.bare.slice(-cate5);
+  var vechi=cursa.bare.slice(0,Math.max(0,cursa.bare.length-cate5));
+  if(vechi.length) strange(vechi,n2).forEach(function(x){ z2.appendChild(bara(x.c,x.r,maxC,maxR)); });
+  else spune(z2, cursa.bare.length ? "cursa e mai scurtă de 5 minute" : "aștept să pornească mașina");
+  strange(recent,n3).forEach(function(x){ z3.appendChild(bara(x.c,x.r,maxC,maxR)); });
+  G("sgCursa").textContent="cursa asta · "+nr(cursa.km,1)+" km";
+  alegeFata();
+}
+function pictaCelule(){
+  var c=V.celule||[];
+  G("clN").textContent=c.length||(harta.celuleN||38);
+  var el=G("barCel"); el.innerHTML="";
+  if(!c.length){
+    G("clNota").textContent="aștept cadrele de celule";
+    G("clMin").textContent="—"; G("clMax").textContent="—";
+    G("clAb").textContent="—"; G("clPachet").textContent="—";
+    return;
+  }
+  var mn=Math.min.apply(null,c), mx=Math.max.apply(null,c);
+  var iMn=c.indexOf(mn), iMx=c.indexOf(mx);
+  var sum=0; c.forEach(function(x){ sum+=x; });
+  G("clMin").innerHTML="#"+(iMn+1)+" · "+nr(mn/1000,3)+'<span class="un">V</span>';
+  G("clMax").innerHTML="#"+(iMx+1)+" · "+nr(mx/1000,3)+'<span class="un">V</span>';
+  G("clAb").innerHTML=(mx-mn)+'<span class="un">mV</span>';
+  G("clPachet").innerHTML=nr(sum/1000,2)+'<span class="un">V</span>';
+
+  /* Linia de jos e cea mai slaba celula, nu zero. Toate cele 38 stau intre
+     3,24 si 3,27 V: de la zero, diferenta ar fi jumatate de procent din
+     inaltime, adica 38 de bare egale din care nu s-ar vedea nimic. */
+  var jos=mn-1, intv=Math.max(3,mx-jos);
+  c.forEach(function(v,i){
+    var b=document.createElement("b");
+    b.style.height=Math.max(2,(v-jos)/intv*100).toFixed(1)+"%";
+    if(i===iMn) b.className="min";
+    if(i===iMx) b.className="max";
+    el.appendChild(b);
+  });
+  G("sc1").textContent=nr(mx/1000,3);
+  G("sc2").textContent=nr((jos+intv/2)/1000,3);
+  G("sc3").textContent=nr(jos/1000,3);
+  G("clNota").textContent="linia de jos e "+nr(jos/1000,3)+" V · fiecare diviziune "+
+    Math.round(intv/2)+" mV";
+
+  pune("clAh",V.ahRamasi,1,"Ah");
+  if(V.capacitate!=null){
+    G("clCap").innerHTML=nr(V.capacitate,0)+'<span class="un">Ah</span>';
+    /* Capacitatea de fabrica nu e scrisa nicaieri in masina; iese din kWh-ii
+       alesi in setari, impartiti la tensiunea nominala a celor 38 de celule
+       LFP. Se citeste direct din lista: aplicatia asta n-o tine altundeva. */
+    var kwh=parseInt(G("sKwh").value,10)||13;
+    var nom=(kwh*1000)/((harta.celuleN||38)*3.2);
+    var proc=V.capacitate/nom*100;
+    G("clCapSub").textContent="din "+Math.round(nom)+" Ah de fabrică · "+
+      Math.round(proc)+" %"+(V.soh!=null?" · BMS spune "+V.soh+" %":"");
+    G("clCapSub").style.color=proc<85?"var(--cald)":"";
+  } else {
+    G("clCap").textContent="—";
+    G("clCapSub").textContent=(V.soc!=null&&V.soc<10)?"prea descărcată ca să socotesc"
+                                                     :"aștept procentul";
+  }
+  var t=V.temp||[];
+  if(t.length){
+    var tn=Math.min.apply(null,t), tx=Math.max.apply(null,t);
+    G("clTemp").innerHTML=tn+(tx>tn?"–"+tx:"")+'<span class="un">°C</span>';
+    G("clTempSub").textContent=t.length+" senzori · diferență "+(tx-tn)+" °C"+
+      ((tx-tn)>8?" · prea mare":"");
+    G("clTempSub").style.color=(tx-tn)>8?"var(--cald)":"";
+  } else {
+    G("clTemp").textContent="—";
+    G("clTempSub").textContent="aștept cadrele de temperatură";
+  }
+
+  var ab=mx-mn;
+  G("abVal").innerHTML=ab+'<span class="un">mV</span>';
+  var bun=ab<25, med=ab<80;
+  G("abStare").textContent=bun?"echilibrat":(med?"de urmărit":"cere atenție");
+  G("abStare").style.color=bun?"var(--viu)":(med?"#FFC23D":"var(--rosu)");
+  G("cursorI").style.left=Math.min(99,ab/120*100).toFixed(1)+"%";
+  pictaBaterie();
+  pictaInsigne();
+  pictaIstoricAbatere(ab);
+}
+
+/* O celula slaba e slaba din fabrica sau din chimie, nu din vina lui. Deci aici
+   nu exista scor si nu exista stele — doar masuratoarea si contextul ei. Iar
+   cifra de acum spune putin: 15 la 16 la 17 mV intr-o luna e o poveste. */
+var istAb=[];
+function incarcaIstAb(){
+  try{ istAb=JSON.parse(localStorage.getItem("cityzenIstAb")||"[]"); }catch(e){ istAb=[]; }
+}
+function pictaIstoricAbatere(ab){
+  var zi=ziua();
+  if(!istAb.length||istAb[istAb.length-1].zi!==zi){
+    istAb.push({zi:zi,ab:ab,cand:Date.now()});
+    if(istAb.length>120) istAb.shift();
+    try{ localStorage.setItem("cityzenIstAb",JSON.stringify(istAb)); }catch(e){}
+  }
+  function inapoi(zile){
+    var t=Date.now()-zile*24*3600000, g=null;
+    istAb.forEach(function(x){ if(x.cand<=t) g=x; });
+    return g;
+  }
+  var luna=inapoi(30), sapt=inapoi(7), el=G("istAb");
+  if(!luna&&!sapt){ el.innerHTML='<span class="mic">se adună cu timpul · '+
+    istAb.length+' zile strânse</span>'; return; }
+  var h="";
+  if(luna) h+='<div><div class="vl" style="font-size:15px">'+luna.ab+
+    '<span class="un">mV</span></div><div class="mic">acum o lună</div></div>';
+  if(sapt) h+='<div><div class="vl" style="font-size:15px">'+sapt.ab+
+    '<span class="un">mV</span></div><div class="mic">acum o săptămână</div></div>';
+  if(luna){
+    var d=ab-luna.ab;
+    h+='<div style="margin-left:auto;text-align:right"><div class="vl" style="font-size:14px;color:'+
+      (d<=3?"var(--viu)":"#FFC23D")+'">'+(d>=0?"+":"")+d+'</div><div class="mic">într-o lună</div></div>';
+  }
+  el.innerHTML=h;
+}
+function pictaBaterie(){
+  var k=stareaBateriei(), st=STARI[k];
+  G("batSvg").innerHTML=desenBaterie(st);
+  G("batTitlu").textContent=st.titlu;
+  G("batText").textContent=st.text;
+  G("batCut").className=(k==="normala"||k==="plina")?"":"cere";
+}
+function picta(){
+  if(G("pBord").classList.contains("on")) pictaBord();
+  else if(G("pCelule").classList.contains("on")) pictaCelule();
+  salvIngrijire();
+}
+
+/* ============================================ bucla de ascultare */
+var ocupat=false;
+function bucla(){
+  if(ocupat||!conectat) return;
+  ocupat=true;
+  asculta(2500,function(r){
+    var c=desfaCadru(r); if(c) primesteCadru(c);
+  }).catch(function(){}).then(function(){ ocupat=false; });
+}
+
+/* ============================================ setari */
+G("sKwh").addEventListener("change",function(){ salveaza(true); });
+G("btnCulege").addEventListener("click",function(){
+  culegere=!culegere; if(!culegere) brute=[];
+  this.textContent=culegere?"pornit":"oprit";
+  this.style.color=culegere?"var(--cald)":"";
+  scrie("mod culegere: "+(culegere?"pornit":"oprit"));
+});
+G("btnHarta").addEventListener("click",function(){
+  try{
+    var h=JSON.parse(G("sHarta").value);
+    if(!h.semnale||!h.semnale.length) throw new Error("lipsește lista 'semnale'");
+    localStorage.setItem("cityzenHarta",JSON.stringify(h)); harta=h;
+    G("sHartaStare").textContent=h.semnale.length+" semnale"; picta();
+  }catch(e){ G("sHartaStare").textContent="nu se poate citi: "+e.message; }
+});
+G("btnHartaImp").addEventListener("click",function(){
+  harta=JSON.parse(JSON.stringify(HARTA_IMP));
+  localStorage.removeItem("cityzenHarta");
+  G("sHarta").value=JSON.stringify(harta,null,1);
+  G("sHartaStare").textContent="harta din fabrică"; picta();
+});
+/* ============================================ diagnosticul Bluetooth
+
+   Unitatea vede adaptorul in lista de dispozitive imperecheate, dar aplicatia
+   nu se leaga. De pe dinafara nu se poate spune de ce: mesajul ajuns in pagina
+   e scurt si a trecut prin trei straturi. Kotlin scrie fiecare pas cu ceas, si
+   pe langa el o radiografie a aparatului.
+
+   Doua campuri din raport lamuresc de obicei totul. TIPUL dispozitivului —
+   Android stie daca e clasic, numai LE, sau amandoua — si SERVICIILE lui: daca
+   printre ele nu apare 1101, nu exista tub serial de deschis. */
+function punteNativa(){ return window.Comutator||window.Punte; }
+function iaRaport(){
+  var P=punteNativa();
+  if(!P||!P.raport) return null;
+  try{ return P.raport(); }catch(e){ return "nu s-a putut citi: "+e.message; }
+}
+G("btnRaport").addEventListener("click",function(){
+  var r=iaRaport();
+  if(!r){ G("sRaport").textContent="merge doar în aplicația instalată pe unitate"; return; }
+  var el=G("raportBt");
+  el.style.display = el.style.display==="none" ? "block" : "none";
+  el.textContent=r;
+  try{
+    var j=JSON.parse(r);
+    var linii=[];
+    if(j.cePareSaFie&&j.cePareSaFie[0]) linii.push(j.cePareSaFie[0]);
+    /* Cateva lucruri scoase in fata, ca sa nu fie nevoie de derulat prin tot
+       fisierul ca sa se vada ce conteaza. */
+    var sis=j.sistem||{};
+    if(sis.aparat) linii.push(sis.aparat.producator+" "+sis.aparat.model+
+      " · Android "+sis.aparat.android);
+    if(sis.capabilitati) linii.push("declară BLE: "+
+      (sis.capabilitati["android.hardware.bluetooth_le"]?"da":"nu")+
+      " · scanner: "+((j.adaptor&&j.adaptor.scannerLe)?"da":"nu"));
+    if(sis.aplicatiiOBD&&sis.aplicatiiOBD.length)
+      linii.push("alte aplicații OBD instalate: "+sis.aplicatiiOBD.join(", "));
+    G("sRaport").innerHTML=linii.join("<br>");
+  }catch(e){ G("sRaport").textContent=""; }
+});
+G("btnRaportJos").addEventListener("click",function(){
+  var r=iaRaport();
+  if(!r){ G("sRaport").textContent="merge doar în aplicația instalată pe unitate"; return; }
+  var d=new Date();
+  var n="cityzen_bluetooth_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+
+    String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+
+    String(d.getMinutes()).padStart(2,"0")+".json";
+  var bl=new Blob([r],{type:"application/json"});
+  var u=URL.createObjectURL(bl),a=document.createElement("a");
+  a.href=u; a.download=n; a.style.display="none";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(u); },400);
+  G("sRaport").textContent="descărcat: "+n;
+});
+
+G("btnJos").addEventListener("click",function(){
+  var text=JSON.stringify({
+    unealta:"Allview Cityzen bord "+VERSIUNE, cand:new Date().toISOString(),
+    adaptor:numeAd, harta:harta, azi:azi, anterioare:anterioare,
+    cursa:{km:cursa.km,wh:cursa.wh,whRec:cursa.whRec,bare:cursa.bare},
+    cadre:cadre, brute:brute, jurnal:LOG
+  });
+  var d=new Date();
+  var n="cityzen_bord_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+
+    String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+
+    String(d.getMinutes()).padStart(2,"0")+".json";
+  var bl=new Blob([text],{type:"application/json"});
+  var u=URL.createObjectURL(bl),a=document.createElement("a");
+  a.href=u; a.download=n; a.style.display="none";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(u); },400);
+  scrie("descărcat: "+n+" ("+Math.round(text.length/1024)+" KB)");
+});
+
+/* ============================================ felul legăturii
+
+   Unitatea din Cityzen n-are Bluetooth Low Energy — dar il DECLARA, si are si
+   scanner. Recunoasterea automata o crede, alege BLE, iar cautarea intoarce
+   zero adaptoare fara nicio eroare limpede. De aceea comutarea trebuie sa fie
+   la indemana si sa se aplice pe loc, nu dupa repornirea aplicatiei.
+
+   Si inca ceva, aflat pe 14 septembrie: in Chrome-ul unitatii nu merge nimic.
+   Acolo scrie "Web Bluetooth is not supported on this platform" — nici WebView,
+   nici Chrome de pe unitate n-au Web Bluetooth. Singura cale pe masina e
+   aplicatia instalata. */
+(function(){
+  var C=window.Comutator;
+  var e=G("sFelPunte"), b=G("btnClasic");
+  if(!C){
+    e.textContent="rulezi în browser · pe unitatea din mașină trebuie aplicația instalată";
+    return;
+  }
+  var clasic=(window.__felPunte==="clasic");
+  e.textContent = clasic
+    ? "Bluetooth clasic · adaptorul trebuie împerecheat din Setări → Bluetooth"
+    : "Bluetooth Low Energy";
+  b.style.display="";
+  b.textContent = clasic ? "Treci pe Bluetooth Low Energy" : "Treci pe Bluetooth clasic";
+  b.addEventListener("click",function(){
+    e.textContent="schimb legătura și reîncarc…";
+    C.pune(!clasic);
+  });
+})();
+
+/* ============================================ pornirea */
+incarcaHarta(); incarcaIstoric(); incarcaIngrijire(); incarcaIstAb();
+iaVremea(); setInterval(iaVremea,30*60000);
+if(!navigator.bluetooth){
+  setStare("fără Web Bluetooth","eroare");
+  G("btnConect").disabled=true;
+  scrie("pagina n-are Web Bluetooth — trebuie rulată în aplicația din mașină");
+}
+setInterval(bucla,300);
+setInterval(function(){ tic(); picta(); },1000);
+window.AV={ceasuri:[bucla,tic]};
+window.__tic=function(){ window.__ultimaBataie=Date.now(); bucla(); tic(); };
+scrie("Allview Cityzen bord "+VERSIUNE+" · harta din fabrică, "+HARTA_IMP.semnale.length+" semnale");
+picta();
+})();
+</script>
+</body>
+</html>
