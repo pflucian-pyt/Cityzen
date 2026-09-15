@@ -347,6 +347,19 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
   </div>
 </section>
 
+<script>
+/* Care punte devine "Punte", inainte ca punte.js sa se incarce. Amandoua sunt
+   pornite in Kotlin; aici se alege doar care se foloseste, iar schimbarea cere
+   o singura reincarcare a paginii, nu repornirea aplicatiei. */
+(function(){
+  try{
+    var clasic = window.Comutator && window.Comutator.clasic();
+    window.Punte = clasic ? (window.PunteSpp || window.PunteBle)
+                          : (window.PunteBle || window.PunteSpp);
+    window.__felPunte = clasic ? "clasic" : "ble";
+  }catch(e){}
+})();
+</script>
 <script src="punte.js"></script>
 <script>
 
@@ -1181,29 +1194,32 @@ G("btnJos").addEventListener("click",function(){
 
 /* ============================================ felul legăturii
 
-   Unitatile din bord nu sunt toate la fel: unele au Bluetooth Low Energy,
-   altele numai clasic. Aplicatia alege singura la pornire, dar recunoasterea
-   se poate insela — sunt unitati care declara BLE si au si scanner, dar pe care
-   BLE-ul nu merge de fapt. Butonul e iesirea din fundatura: fara el, omul
-   ramane blocat si n-are nicio cale fara sa recompileze. */
+   Unitatea din Cityzen n-are Bluetooth Low Energy — dar il DECLARA, si are si
+   scanner. Recunoasterea automata o crede, alege BLE, iar cautarea intoarce
+   zero adaptoare fara nicio eroare limpede. De aceea comutarea trebuie sa fie
+   la indemana si sa se aplice pe loc, nu dupa repornirea aplicatiei.
+
+   Si inca ceva, aflat pe 14 septembrie: in Chrome-ul unitatii nu merge nimic.
+   Acolo scrie "Web Bluetooth is not supported on this platform" — nici WebView,
+   nici Chrome de pe unitate n-au Web Bluetooth. Singura cale pe masina e
+   aplicatia instalata. */
 (function(){
-  var P=window.Punte;
-  if(!P||!P.fel){ G("sFelPunte").textContent="legătură prin browser (Web Bluetooth)"; return; }
-  var f=P.fel();
-  G("sFelPunte").textContent = (f==="clasic")
-    ? "Bluetooth clasic · adaptorul trebuie împerecheat din Setări"
-    : "Bluetooth Low Energy";
-  if(f!=="clasic"&&P.alege_clasic){
-    var b=G("btnClasic");
-    b.style.display="";
-    b.addEventListener("click",function(){
-      if(!window.confirm("Trec pe Bluetooth clasic. Se aplică după repornirea "+
-         "aplicației, iar adaptorul trebuie împerecheat din Setări → Bluetooth.")) return;
-      P.alege_clasic(true);
-      G("sFelPunte").textContent="Bluetooth clasic la următoarea pornire";
-      b.style.display="none";
-    });
+  var C=window.Comutator;
+  var e=G("sFelPunte"), b=G("btnClasic");
+  if(!C){
+    e.textContent="rulezi în browser · pe unitatea din mașină trebuie aplicația instalată";
+    return;
   }
+  var clasic=(window.__felPunte==="clasic");
+  e.textContent = clasic
+    ? "Bluetooth clasic · adaptorul trebuie împerecheat din Setări → Bluetooth"
+    : "Bluetooth Low Energy";
+  b.style.display="";
+  b.textContent = clasic ? "Treci pe Bluetooth Low Energy" : "Treci pe Bluetooth clasic";
+  b.addEventListener("click",function(){
+    e.textContent="schimb legătura și reîncarc…";
+    C.pune(!clasic);
+  });
 })();
 
 /* ============================================ pornirea */

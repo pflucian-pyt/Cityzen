@@ -24,6 +24,31 @@ La prima pornire cere trei permisiuni: Bluetooth, localizare și notificări.
 dacă nu ne interesează unde suntem — fără ea scanarea întoarce zero dispozitive
 și pare defect de Bluetooth, nu de permisiune.
 
+## În mașină merge NUMAI aplicația instalată
+
+Chrome-ul de pe unitate nu are Web Bluetooth. Dacă deschizi fișierul HTML
+acolo, scrie „Web Bluetooth is not supported on this platform" și nu se
+conectează nimic, indiferent de adaptor. Pe telefon merge, pe unitate nu.
+
+## Bluetooth: clasic sau Low Energy
+
+Aplicația alege singură la pornire, după ce vede unitatea. Ce a ales scrie în
+**Setări**, sub butonul de conectare.
+
+**Dacă e Bluetooth clasic** — cazul unității din Cityzen — adaptorul trebuie
+împerecheat **o singură dată**, din Setări → Bluetooth ale unității. Codul e de
+obicei `1234` sau `0000`. Aplicația nu scanează: arată doar ce e deja
+împerecheat, fiindcă o scanare clasică durează douăsprezece secunde și n-aduce
+nimic în plus.
+
+**Dacă recunoașterea greșește** — unitatea din Cityzen declară Low Energy, are
+și scanner, și totuși nu găsește nimic — apeși butonul din Setări. Amândouă
+punțile sunt pornite în același timp, deci schimbarea se aplică pe loc, cu o
+singură reîncărcare a paginii. Nu trebuie repornită aplicația.
+
+Adaptorul trebuie să fie **clasic**, nu BLE. În descriere caută „Bluetooth 2.0",
+„3.0" sau „SPP". Evită „4.0 BLE" și „compatibil iPhone".
+
 ## Înainte de orice: închide Car Scanner
 
 Adaptorul acceptă o singură legătură. Dacă o ține altă aplicație — de pe

@@ -131,38 +131,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         /*
-         * Care punte. Unitatea din Allview Cityzen n-are Bluetooth Low Energy,
-         * iar PunteBle vorbeste numai BLE — pe ea, orice adaptor ar fi, nu se
-         * leaga nimic. Alegerea se face singura, la pornire, si se scrie in
-         * jurnal: cand ceva nu merge, primul lucru pe care vrei sa-l stii e pe
-         * ce drum a plecat aplicatia.
+         * AMANDOUA PUNTILE, pornite deodata.
          *
-         * Se verifica doua lucruri, nu unul. Unele unitati declara capabilitatea
-         * BLE in sistem, dar n-au scanner — si atunci totul pare in regula pana
-         * la prima cautare, care intoarce zero aparate fara nicio eroare.
+         * Prima incercare alegea una la pornire si atat. Dar recunoasterea se
+         * inseala: unitatea din Cityzen declara Bluetooth Low Energy, are si
+         * scanner, si totusi nu gaseste nimic — iar omul ramanea cu un buton
+         * care cerea repornirea aplicatiei ca sa schimbe ceva ce oricum nu era
+         * sigur ca ajuta.
+         *
+         * Acum sunt inregistrate amandoua, sub nume diferite, iar pagina alege
+         * la incarcare care dintre ele devine "Punte". Comutarea inseamna un
+         * singur reload, fara repornire si fara sa se piarda nimic.
          */
-        val areCapabilitate =
-            packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
-        val areScanner = try {
-            (getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)
-                ?.adapter?.bluetoothLeScanner != null
-        } catch (e: Exception) { false }
+        punteBle = PunteBle(this, web)
+        punteSpp = PunteSpp(this, web)
+        web.addJavascriptInterface(punteBle!!, "PunteBle")
+        web.addJavascriptInterface(punteSpp!!, "PunteSpp")
+        web.addJavascriptInterface(Comutator(), "Comutator")
 
-        val fortatClasic = getSharedPreferences("cityzen", MODE_PRIVATE)
-            .getBoolean("fortatClasic", false)
-
-        if (areCapabilitate && areScanner && !fortatClasic) {
-            punteBle = PunteBle(this, web)
-            web.addJavascriptInterface(punteBle!!, "Punte")
-            android.util.Log.i("Punte", "Bluetooth Low Energy")
-        } else {
-            punteSpp = PunteSpp(this, web)
-            web.addJavascriptInterface(punteSpp!!, "Punte")
-            android.util.Log.i("Punte", "Bluetooth clasic" +
-                (if (fortatClasic) " (cerut din setari)"
-                 else if (!areCapabilitate) " (unitatea n-are BLE)"
-                 else " (unitatea n-are scanner BLE)"))
-        }
         web.addJavascriptInterface(PunteFisiere(this), "Fisiere")
 
         setContentView(web)
@@ -187,6 +173,35 @@ class MainActivity : AppCompatActivity() {
      * tocmai ca sa poata fi batute din afara. Se bate numai daca pagina chiar
      * a tacut, ca sa nu dublam munca atunci cand totul merge normal.
      */
+    /**
+     * Ce punte foloseste pagina. Alegerea se tine intr-o preferinta, deci
+     * supravietuieste repornirii; schimbarea se vede la reincarcarea paginii.
+     *
+     * Implicit e Bluetooth clasic pe unitatile care n-au Low Energy, si BLE pe
+     * celelalte — dar omul poate trece oricand, fiindca recunoasterea automata
+     * nu e de incredere.
+     */
+    inner class Comutator {
+        @android.webkit.JavascriptInterface
+        fun clasic(): Boolean {
+            val p = getSharedPreferences("cityzen", MODE_PRIVATE)
+            if (p.contains("fortatClasic")) return p.getBoolean("fortatClasic", false)
+            val areBle = packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
+            val areScanner = try {
+                (getSystemService(Context.BLUETOOTH_SERVICE)
+                    as? android.bluetooth.BluetoothManager)?.adapter?.bluetoothLeScanner != null
+            } catch (e: Exception) { false }
+            return !(areBle && areScanner)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun pune(da: Boolean) {
+            getSharedPreferences("cityzen", MODE_PRIVATE)
+                .edit().putBoolean("fortatClasic", da).apply()
+            web.post { web.reload() }
+        }
+    }
+
     private fun batePeriodic() {
         mana.postDelayed(object : Runnable {
             override fun run() {
