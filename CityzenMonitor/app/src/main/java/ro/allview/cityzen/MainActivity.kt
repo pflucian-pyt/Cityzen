@@ -20,6 +20,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
@@ -72,6 +74,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private var punteBle: PunteBle? = null
     private var punteSpp: PunteSpp? = null
+    private var punteFisiere: PunteFisiere? = null
+
+    /*
+     * Fereastra de sistem „unde salvez”. Se inregistreaza inainte de onCreate,
+     * asa cere Android; altfel arunca la prima folosire. De aici se poate alege
+     * si stickul USB, ceea ce e chiar rostul ei: pe unitatea din masina,
+     * folderul Descarcari e greu de gasit si imposibil de scos afara.
+     */
+    private val alegeLocul: ActivityResultLauncher<String> =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            punteFisiere?.scrieLa(uri)
+        }
     private val mana = Handler(Looper.getMainLooper())
     private var origineGps: String? = null
     private var apelGps: GeolocationPermissions.Callback? = null
@@ -149,7 +163,8 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(punteSpp!!, "PunteSpp")
         web.addJavascriptInterface(Comutator(), "Comutator")
 
-        web.addJavascriptInterface(PunteFisiere(this), "Fisiere")
+        punteFisiere = PunteFisiere(this, web) { nume -> alegeLocul.launch(nume) }
+        web.addJavascriptInterface(punteFisiere!!, "Fisiere")
 
         setContentView(web)
         ecranComplet()

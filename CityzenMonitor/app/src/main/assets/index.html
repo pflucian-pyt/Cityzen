@@ -322,6 +322,8 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
     <div class="rand" style="margin-top:9px">
       <button class="sec" id="btnRaport">Vezi diagnosticul Bluetooth</button>
       <button class="sec" id="btnRaportJos">Descarcă diagnosticul</button>
+      <button class="sec" id="btnRaportUsb">Diagnostic pe USB</button>
+      <button class="sec" id="btnRaportCopie">Arată ca text de copiat</button>
     </div>
     <p class="mic" id="sRaport" style="margin-top:7px">—</p>
     <pre id="raportBt" style="display:none;margin-top:9px;max-height:260px"></pre>
@@ -334,7 +336,10 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
       <span class="mic" style="margin-left:20px">mod culegere</span>
       <button class="sec" id="btnCulege">oprit</button>
       <button class="sec" id="btnJos">Descarcă înregistrarea</button>
+      <button class="sec" id="btnUsb">Salvează unde vreau (USB)</button>
     </div>
+    <p class="mic" id="sSalvare" style="margin-top:8px">—</p>
+    <textarea id="textExport" rows="6" readonly style="display:none;margin-top:8px"></textarea>
     <p class="mic" style="margin-top:8px">Modul culegere păstrează toate cadrele brute,
     pentru descoperit semnale noi. Nu e nevoie de el în mersul obișnuit.</p>
   </div>
@@ -1179,6 +1184,50 @@ G("btnHartaImp").addEventListener("click",function(){
   G("sHarta").value=JSON.stringify(harta,null,1);
   G("sHartaStare").textContent="harta din fabrică"; picta();
 });
+/* ============================================ salvarea fișierelor
+
+   In WebView nu exista manager de descarcari: o legatura cu "download" nu face
+   absolut nimic si nu da nicio eroare. punte.js prinde apasarea si trimite
+   octetii in Kotlin, care scrie in Descarcari — dar pe unitatea din masina
+   folderul ala e greu de gasit si imposibil de scos afara.
+
+   De aceea exista si a doua cale: fereastra de sistem „unde salvez”, din care
+   se poate alege stickul USB. Si a treia, pentru cazul in care nici asta nu
+   merge: textul pe ecran, de copiat cu mana.
+
+   Si, orice s-ar intampla, rezultatul se scrie in pagina. Un Toast care dispare
+   in trei secunde e ca si cum n-ai spune nimic: cand ceva a esuat, omul cauta
+   apoi o ora un fisier care nu exista. */
+window.__salvare=function(reusit,text){
+  var e=G("sSalvare");
+  if(!e) return;
+  e.textContent=(reusit?"salvat: ":"NU s-a salvat: ")+text;
+  e.style.color=reusit?"var(--viu)":"var(--rosu)";
+};
+function numeFisier(prefix){
+  var d=new Date();
+  return prefix+"_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+
+    String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+
+    String(d.getMinutes()).padStart(2,"0")+".json";
+}
+function laUsb(nume,text){
+  if(window.Fisiere&&window.Fisiere.salveazaUnde){
+    var b64=btoa(unescape(encodeURIComponent(text)));
+    window.Fisiere.salveazaUnde(nume,b64,"application/json");
+    window.__salvare(true,"alege locul în fereastra care s-a deschis");
+    return true;
+  }
+  window.__salvare(false,"merge doar în aplicația instalată");
+  return false;
+}
+function inCaseta(text){
+  var e=G("textExport");
+  e.style.display="block";
+  e.value=text;
+  e.focus(); e.select();
+  window.__salvare(true,"selectat — ține apăsat și alege Copiază");
+}
+
 /* ============================================ diagnosticul Bluetooth
 
    Unitatea vede adaptorul in lista de dispozitive imperecheate, dar aplicatia
@@ -1218,6 +1267,16 @@ G("btnRaport").addEventListener("click",function(){
     G("sRaport").innerHTML=linii.join("<br>");
   }catch(e){ G("sRaport").textContent=""; }
 });
+G("btnRaportUsb").addEventListener("click",function(){
+  var r=iaRaport();
+  if(!r){ G("sRaport").textContent="merge doar în aplicația instalată"; return; }
+  laUsb(numeFisier("cityzen_bluetooth"),r);
+});
+G("btnRaportCopie").addEventListener("click",function(){
+  var r=iaRaport();
+  if(!r){ G("sRaport").textContent="merge doar în aplicația instalată"; return; }
+  inCaseta(r);
+});
 G("btnRaportJos").addEventListener("click",function(){
   var r=iaRaport();
   if(!r){ G("sRaport").textContent="merge doar în aplicația instalată pe unitate"; return; }
@@ -1233,17 +1292,22 @@ G("btnRaportJos").addEventListener("click",function(){
   G("sRaport").textContent="descărcat: "+n;
 });
 
-G("btnJos").addEventListener("click",function(){
-  var text=JSON.stringify({
+G("btnUsb").addEventListener("click",function(){
+  laUsb(numeFisier("cityzen_bord"), fisierText());
+});
+/* Continutul fisierului, scos intr-o functie: il vor si butonul de descarcare,
+   si cel de salvare pe USB, si cel de copiat ca text. */
+function fisierText(){
+  return JSON.stringify({
     unealta:"Allview Cityzen bord "+VERSIUNE, cand:new Date().toISOString(),
     adaptor:numeAd, harta:harta, azi:azi, anterioare:anterioare,
     cursa:{km:cursa.km,wh:cursa.wh,whRec:cursa.whRec,bare:cursa.bare},
     cadre:cadre, brute:brute, jurnal:LOG
   });
-  var d=new Date();
-  var n="cityzen_bord_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+
-    String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+
-    String(d.getMinutes()).padStart(2,"0")+".json";
+}
+G("btnJos").addEventListener("click",function(){
+  var text=fisierText();
+  var n=numeFisier("cityzen_bord");
   var bl=new Blob([text],{type:"application/json"});
   var u=URL.createObjectURL(bl),a=document.createElement("a");
   a.href=u; a.download=n; a.style.display="none";
