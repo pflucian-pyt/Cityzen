@@ -263,13 +263,6 @@ class PunteSpp(
     @JavascriptInterface
     fun fel(): String = "clasic"
 
-    /**
-     * Alegerea, fortata de om. Recunoasterea automata se inseala uneori: sunt
-     * unitati care declara BLE si au si scanner, dar pe care BLE-ul nu merge de
-     * fapt. Fara butonul asta, omul ramane blocat si n-are nicio cale sa iasa
-     * fara sa recompileze aplicatia.
-     */
-    @JavascriptInterface
     /** Radiografia aparatului plus jurnalul, pentru descărcat din Setări. */
     @JavascriptInterface
     fun raport(): String = JurnalBt.raport(activitate, "clasic")
@@ -277,6 +270,12 @@ class PunteSpp(
     @JavascriptInterface
     fun goleste_jurnal() = JurnalBt.goleste()
 
+    /**
+     * Alegerea, fortata de om. Recunoasterea automata se inseala uneori: sunt
+     * unitati care declara BLE si au si scanner, dar pe care BLE-ul nu merge de
+     * fapt. Fara butonul asta, omul ramane blocat si n-are nicio cale sa iasa
+     * fara sa recompileze aplicatia.
+     */
     @JavascriptInterface
     fun alege_clasic(da: Boolean) {
         activitate.getSharedPreferences(PREF, Context.MODE_PRIVATE)
