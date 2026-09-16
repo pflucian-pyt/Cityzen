@@ -363,10 +363,18 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
    pornite in Kotlin; aici se alege doar care se foloseste, iar schimbarea cere
    o singura reincarcare a paginii, nu repornirea aplicatiei. */
 (function(){
+  /* Alegerea puntii, scrisa ca sa nu poata esua.
+     Varianta dinainte punea intrebarea si atribuirea in acelasi try: daca
+     Comutator.clasic() arunca — citeste PackageManager si BluetoothManager, are
+     de unde — catch-ul inghitea totul si window.Punte ramanea nepus. Pagina
+     cadea pe Chrome si scria "Web Bluetooth is not supported on this platform",
+     desi puntea nativa era chiar acolo. Acum intrebarea e separata de atribuire,
+     iar atribuirea se face oricum. */
+  var clasic=false;
+  try{ clasic = !!(window.Comutator && window.Comutator.clasic()); }catch(e){}
   try{
-    var clasic = window.Comutator && window.Comutator.clasic();
-    var ales = clasic ? (window.PunteSpp || window.PunteBle)
-                      : (window.PunteBle || window.PunteSpp);
+    var ales = clasic ? (window.PunteSpp || window.PunteBle || window.Punte)
+                      : (window.PunteBle || window.PunteSpp || window.Punte);
     /* NUMAI daca am gasit una. Kotlin-ul mai vechi inregistra direct "Punte",
        fara PunteBle si PunteSpp — iar atribuirea neconditionata o stergea cu
        undefined. Pagina cadea inapoi pe Chrome, care n-are Web Bluetooth, si
