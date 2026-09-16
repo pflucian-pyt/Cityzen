@@ -1369,6 +1369,7 @@ setInterval(function(){ tic(); picta(); },1000);
 window.AV={ceasuri:[bucla,tic]};
 window.__tic=function(){ window.__ultimaBataie=Date.now(); bucla(); tic(); };
 scrie("Allview Cityzen bord "+VERSIUNE+" · punte: "+(window.__felPunte||"lipsă")
+      +(window.Punte&&!window.__btPunteInstalata ? " (NEINSTALATĂ)" : "")
       +" · harta din fabrică, "+HARTA_IMP.semnale.length+" semnale");
 picta();
 })();
