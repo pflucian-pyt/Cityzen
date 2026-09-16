@@ -317,7 +317,6 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
     </div>
     <div class="rand" style="margin-top:9px">
       <span class="mic" id="sFelPunte">—</span>
-      <button class="sec" id="btnClasic" style="display:none">Treci pe Bluetooth clasic</button>
     </div>
     <div class="rand" style="margin-top:9px">
       <button class="sec" id="btnRaport">Vezi diagnosticul Bluetooth</button>
@@ -370,8 +369,11 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
      cadea pe Chrome si scria "Web Bluetooth is not supported on this platform",
      desi puntea nativa era chiar acolo. Acum intrebarea e separata de atribuire,
      iar atribuirea se face oricum. */
-  var clasic=false;
-  try{ clasic = !!(window.Comutator && window.Comutator.clasic()); }catch(e){}
+  /* Aplicatia merge NUMAI pe Bluetooth clasic. Intrebarea dinainte —
+     Comutator.clasic() — a disparut: unitatea din Cityzen nu are un Low Energy
+     folosibil pentru ELM327, oricat ar declara. Asa, alegerea nu mai are cum sa
+     esueze si nu mai depinde de nicio preferinta salvata. */
+  var clasic=true;
   try{
     var ales = clasic ? (window.PunteSpp || window.PunteBle || window.Punte)
                       : (window.PunteBle || window.PunteSpp || window.Punte);
@@ -1334,32 +1336,24 @@ G("btnJos").addEventListener("click",function(){
 
 /* ============================================ felul legăturii
 
-   Unitatea din Cityzen n-are Bluetooth Low Energy — dar il DECLARA, si are si
-   scanner. Recunoasterea automata o crede, alege BLE, iar cautarea intoarce
-   zero adaptoare fara nicio eroare limpede. De aceea comutarea trebuie sa fie
-   la indemana si sa se aplice pe loc, nu dupa repornirea aplicatiei.
+   Nu mai e nimic de comutat: aplicatia merge numai pe Bluetooth clasic.
+   Unitatea declara Low Energy si are si scanner, dar sub ea nu sta stiva
+   Bluetooth obisnuita a Androidului, ci una proprie a producatorului, care da
+   socketuri serial pe UUID-ul 1101 si nimic folosibil pe GATT. Butonul de
+   comutare nu facea decat sa ofere o cale care nu duce nicaieri.
 
    Si inca ceva, aflat pe 14 septembrie: in Chrome-ul unitatii nu merge nimic.
    Acolo scrie "Web Bluetooth is not supported on this platform" — nici WebView,
    nici Chrome de pe unitate n-au Web Bluetooth. Singura cale pe masina e
-   aplicatia instalata. */
+   aplicatia instalata. Randul de mai jos o spune pe sleau, ca sa nu se mai
+   piarda timp cu fisierul HTML deschis in browser. */
 (function(){
-  var C=window.Comutator;
-  var e=G("sFelPunte"), b=G("btnClasic");
-  if(!C){
+  var e=G("sFelPunte");
+  if(!window.Punte){
     e.textContent="rulezi în browser · pe unitatea din mașină trebuie aplicația instalată";
     return;
   }
-  var clasic=(window.__felPunte==="clasic");
-  e.textContent = clasic
-    ? "Bluetooth clasic · adaptorul trebuie împerecheat din Setări → Bluetooth"
-    : "Bluetooth Low Energy";
-  b.style.display="";
-  b.textContent = clasic ? "Treci pe Bluetooth Low Energy" : "Treci pe Bluetooth clasic";
-  b.addEventListener("click",function(){
-    e.textContent="schimb legătura și reîncarc…";
-    C.pune(!clasic);
-  });
+  e.textContent="Bluetooth clasic · adaptorul trebuie împerecheat din Setări → Bluetooth";
 })();
 
 /* ============================================ pornirea */
@@ -1374,7 +1368,8 @@ setInterval(bucla,300);
 setInterval(function(){ tic(); picta(); },1000);
 window.AV={ceasuri:[bucla,tic]};
 window.__tic=function(){ window.__ultimaBataie=Date.now(); bucla(); tic(); };
-scrie("Allview Cityzen bord "+VERSIUNE+" · harta din fabrică, "+HARTA_IMP.semnale.length+" semnale");
+scrie("Allview Cityzen bord "+VERSIUNE+" · punte: "+(window.__felPunte||"lipsă")
+      +" · harta din fabrică, "+HARTA_IMP.semnale.length+" semnale");
 picta();
 })();
 </script>
