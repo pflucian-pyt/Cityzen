@@ -327,7 +327,7 @@
 
   // ---------- navigator.bluetooth ----------
 
-  navigator.bluetooth = {
+  var punteaNoastra = {
     getAvailability: function () { return Promise.resolve(true); },
     requestDevice: function (opt) {
       // Alegerea dispozitivului o face omul, dintr-o lista afisata de Kotlin,
@@ -372,6 +372,62 @@
     addEventListener: function () {},
     removeEventListener: function () {}
   };
+
+  /* Instalarea. Aici a fost defectul care ne-a costat o zi.
+   *
+   * Randul dinainte era "navigator.bluetooth = {...}", si mergea peste tot unde
+   * am incercat. Pe unitatea din masina nu. Motivul: WebView-ul ei (versiunea
+   * 83) ARE Web Bluetooth compilat inauntru, doar ca nefolosibil — deci
+   * navigator.bluetooth exista, ca proprietate NUMAI-CITIRE de pe prototipul
+   * lui Navigator. Iar fisierul asta ruleaza in "use strict", unde o atribuire
+   * peste o proprietate numai-citire nu e ignorata in tacere: ARUNCA. Exceptia
+   * iesea din functia mare, tot ce urma nu se mai executa, si pagina ramanea cu
+   * Web Bluetooth-ul adevarat al Chromium-ului, care raspunde "Web Bluetooth is
+   * not supported on this platform". Punte injectata, punte activa, si totusi
+   * eroarea aceea — fiindca punte.js murea la randul asta.
+   *
+   * Acum se incearca pe rand: atribuirea simpla, apoi o proprietate proprie pe
+   * obiectul navigator (care acopera getterul de pe prototip), apoi un getter
+   * pus chiar pe prototip. Fiecare incercare se verifica, nu se presupune. */
+  (function instaleaza() {
+    var pus = false;
+
+    try {
+      navigator.bluetooth = punteaNoastra;
+      pus = (navigator.bluetooth === punteaNoastra);
+    } catch (e) {
+      console.warn("punte.js: atribuirea simplă a picat (" + e.message + ")");
+    }
+
+    if (!pus) {
+      try {
+        Object.defineProperty(navigator, "bluetooth", {
+          value: punteaNoastra, writable: true, configurable: true, enumerable: true
+        });
+        pus = (navigator.bluetooth === punteaNoastra);
+      } catch (e) {
+        console.warn("punte.js: proprietatea proprie a picat (" + e.message + ")");
+      }
+    }
+
+    if (!pus) {
+      try {
+        Object.defineProperty(Object.getPrototypeOf(navigator), "bluetooth", {
+          get: function () { return punteaNoastra; }, configurable: true
+        });
+        pus = (navigator.bluetooth === punteaNoastra);
+      } catch (e) {
+        console.warn("punte.js: getterul de pe prototip a picat (" + e.message + ")");
+      }
+    }
+
+    window.__btPunteInstalata = pus;
+    if (pus) {
+      console.log("punte.js: navigator.bluetooth înlocuit cu puntea nativă");
+    } else {
+      console.error("punte.js: NU am putut înlocui navigator.bluetooth");
+    }
+  })();
 
   // ---------- descarcarea fisierelor ----------
   //
