@@ -43,6 +43,13 @@ import java.util.UUID
  *    De aceea are fir propriu, iar ce citeste trimite in pagina exact ca o
  *    notificare BLE, ca sa nu se schimbe nimic mai sus.
  *
+ *  - NU SE UITA LA LISTA DE SERVICII. Unitatea nu ruleaza stiva Bluetooth
+ *    obisnuita: cand persist.sys.bt.custom.stack e adevarat, apelurile pleaca
+ *    spre o stiva proprie a producatorului. Aceea nu raspunde la interogarea de
+ *    servicii, deci getUuids() intoarce gol MEREU, si pe un adaptor bun, si pe
+ *    unul stricat. O verificare pe lista aia ar refuza exact aparatele care
+ *    merg. Se incearca direct deschiderea tubului, si se vede ce iese.
+ *
  *  - SCRIE DIRECT, FARA COADA. La BLE, o scriere trebuie sa astepte confirmarea
  *    celei dinainte, altfel stiva le amesteca. Pe un socket serial nu exista
  *    problema asta: octetii intra in ordine. Coada, MTU-ul si ritmul rapid din
@@ -152,32 +159,17 @@ class PunteSpp(
                 JurnalBt.scrie("  tip radio: ${
                     when (d.type) { 1 -> "clasic"; 2 -> "numai LE"; 3 -> "clasic și LE"; else -> "necunoscut" }
                 } · împerecheat: ${d.bondState == android.bluetooth.BluetoothDevice.BOND_BONDED}")
+                /* Lista de servicii se scrie doar in jurnal, ca sa se vada ce
+                   raspunde unitatea. NU se ia nicio decizie pe ea: pe unitatile
+                   cu stiva proprie e goala mereu, desi legatura se poate face. */
                 try {
                     val u = d.uuids?.joinToString(", ") { it.uuid.toString() } ?: "niciunul anunțat"
-                    JurnalBt.scrie("  servicii: $u")
+                    JurnalBt.scrie("  servicii anunțate: $u  (informativ, nu blochează)")
                 } catch (e: Exception) { JurnalBt.scrie("  serviciile nu s-au putut citi: ${e.message}") }
                 inchideTacut()
                 try { a.cancelDiscovery() } catch (e: Exception) { }
 
-                /* Metoda obisnuita esueaza pe unele unitati chinezesti cu
-                   "read failed, socket might closed". Atunci se incearca
-                   varianta ascunsa, pe canalul 1 — trucul stiut de zece ani,
-                   si singurul care merge pe o parte din aparate. */
-                val s = try {
-                    JurnalBt.scrie("  încerc RFCOMM pe serviciul 1101")
-                    val direct = d.createRfcommSocketToServiceRecord(SPP)
-                    direct.connect()
-                    JurnalBt.scrie("  a mers pe 1101")
-                    direct
-                } catch (prima: Exception) {
-                    JurnalBt.scrie("  1101 a eșuat: ${prima.javaClass.simpleName}: ${prima.message}")
-                    JurnalBt.scrie("  încerc canalul 1, pe metoda ascunsă")
-                    val metoda = d.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-                    val rezerva = metoda.invoke(d, 1) as BluetoothSocket
-                    rezerva.connect()
-                    JurnalBt.scrie("  a mers pe canalul 1")
-                    rezerva
-                }
+                val s = conecteazaSocket(d)
 
                 socket = s
                 iesire = s.outputStream
@@ -283,6 +275,59 @@ class PunteSpp(
     }
 
     // ------------------------------------------------------------ dedesubt
+
+    /**
+     * Deschiderea tubului. Trei incercari, toate pe acelasi UUID.
+     *
+     * De ce numai pe UUID: unitatea din Cityzen nu ruleaza stiva Bluetooth
+     * obisnuita a Androidului. Cand persist.sys.bt.custom.stack e adevarat,
+     * libbluetooth_jni.so comuta pe o stiva proprie ("blink"), iar aceea
+     * alege firul de tratare DUPA UUID-ul cerut, dintr-o lista inchisa de
+     * patru: 1101 (SPP), fcfb (CarLink), fe35 si fe36 (HiCar). Orice altceva
+     * cade mut, in ramura "cur uuid unknow, so skip process".
+     *
+     * De aceea a disparut rezerva pe canalul 1: un socket deschis pe canal nu
+     * poarta niciun UUID, deci pe unitatea asta nu are cum sa fie rutat. Pe
+     * telefoane obisnuite mergea; aici doar ascundea motivul adevarat al
+     * esecului si manca timp.
+     *
+     * A treia incercare exista fiindca stiva face interogarea de servicii abia
+     * la prima conectare. Daca adaptorul nu apucase sa raspunda, o a doua
+     * cerere dupa o pauza scurta prinde canalul deja aflat.
+     */
+    private fun conecteazaSocket(d: BluetoothDevice): BluetoothSocket {
+        var ultima: Exception? = null
+
+        val incercari = listOf<Pair<String, () -> BluetoothSocket>>(
+            "securizat pe 1101" to { d.createRfcommSocketToServiceRecord(SPP) },
+            "nesecurizat pe 1101" to { d.createInsecureRfcommSocketToServiceRecord(SPP) },
+            "securizat pe 1101, a doua oară" to { d.createRfcommSocketToServiceRecord(SPP) }
+        )
+
+        for ((i, incercare) in incercari.withIndex()) {
+            val (nume, fabrica) = incercare
+            if (i == 2) {
+                JurnalBt.scrie("  pauză de o secundă și jumătate, apoi mai încerc o dată")
+                try { Thread.sleep(1500) } catch (e: InterruptedException) { }
+            }
+            JurnalBt.scrie("  încerc $nume")
+            var s: BluetoothSocket? = null
+            try {
+                s = fabrica()
+                s.connect()
+                JurnalBt.scrie("  a mers: $nume")
+                return s
+            } catch (e: Exception) {
+                ultima = e
+                JurnalBt.scrie("  $nume a eșuat: ${e.javaClass.simpleName}: ${e.message}")
+                /* Socketul picat trebuie inchis, altfel ramane un canal pe
+                   jumatate deschis si incercarea urmatoare pica si ea. */
+                try { s?.close() } catch (e2: Exception) { }
+            }
+        }
+
+        throw ultima ?: Exception("nu s-a putut deschide niciun socket")
+    }
 
     private fun porneisteCitirea(intrare: InputStream) {
         firCitire?.interrupt()
