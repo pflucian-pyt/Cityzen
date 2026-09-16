@@ -189,40 +189,33 @@ class MainActivity : AppCompatActivity() {
      * a tacut, ca sa nu dublam munca atunci cand totul merge normal.
      */
     /**
-     * Ce punte foloseste pagina. Alegerea se tine intr-o preferinta, deci
-     * supravietuieste repornirii; schimbarea se vede la reincarcarea paginii.
+     * Ce punte foloseste pagina. Aici nu mai e nimic de ales: unitatea din
+     * Cityzen merge NUMAI pe Bluetooth clasic.
      *
-     * Implicit e Bluetooth clasic pe unitatile care n-au Low Energy, si BLE pe
-     * celelalte — dar omul poate trece oricand, fiindca recunoasterea automata
-     * nu e de incredere.
+     * Motivul, aflat din firmware: cand persist.sys.bt.custom.stack e adevarat,
+     * unitatea nu ruleaza stiva Bluetooth obisnuita, ci una proprie. Aceea da
+     * socketuri RFCOMM pe patru UUID-uri hardcodate, intre care 1101 (SPP), dar
+     * nu da GATT folosibil pentru un adaptor ELM327. Deci Low Energy n-are cum
+     * sa mearga aici, oricat ar declara unitatea ca are.
+     *
+     * Metodele au ramas pe loc, cu aceleasi nume, ca pagina veche sa nu cada
+     * daca le cheama — doar ca raspunsul nu se mai schimba.
      */
     inner class Comutator {
         @android.webkit.JavascriptInterface
-        fun clasic(): Boolean {
-            val p = getSharedPreferences("cityzen", MODE_PRIVATE)
-            if (p.contains("fortatClasic")) return p.getBoolean("fortatClasic", false)
-            val areBle = packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
-            val areScanner = try {
-                (getSystemService(Context.BLUETOOTH_SERVICE)
-                    as? android.bluetooth.BluetoothManager)?.adapter?.bluetoothLeScanner != null
-            } catch (e: Exception) { false }
-            return !(areBle && areScanner)
-        }
+        fun clasic(): Boolean = true
 
         /** Radiografia, indiferent ce punte e activa. */
         @android.webkit.JavascriptInterface
-        fun raport(): String =
-            JurnalBt.raport(this@MainActivity, if (clasic()) "clasic" else "ble")
+        fun raport(): String = JurnalBt.raport(this@MainActivity, "clasic")
 
         @android.webkit.JavascriptInterface
         fun goleste_jurnal() = JurnalBt.goleste()
 
+        /** Ramasa doar ca sa nu crape paginile vechi. Nu mai comuta nimic. */
         @android.webkit.JavascriptInterface
         fun pune(da: Boolean) {
-            getSharedPreferences("cityzen", MODE_PRIVATE)
-                .edit().putBoolean("fortatClasic", da).apply()
-            JurnalBt.scrie("comutat pe " + (if (da) "clasic" else "Low Energy"))
-            web.post { web.reload() }
+            JurnalBt.scrie("cerere de comutare ignorată: aplicația merge numai pe Bluetooth clasic")
         }
     }
 
