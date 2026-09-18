@@ -5,7 +5,10 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Base64
 import android.util.Log
 import android.webkit.JavascriptInterface
@@ -105,16 +108,59 @@ class PunteSpp(
             if (a == null) { eroare(id, "Bluetooth indisponibil pe unitatea asta"); return@post }
             if (!a.isEnabled) { eroare(id, "Bluetooth-ul e oprit"); return@post }
 
-            val lista = try { a.bondedDevices?.toList() ?: emptyList() } catch (e: Exception) { emptyList() }
-            JurnalBt.scrie("listă cerută · ${lista.size} dispozitive împerecheate: " +
+            val imperecheate = try { a.bondedDevices?.toList() ?: emptyList() } catch (e: Exception) { emptyList() }
+            JurnalBt.scrie("listă cerută · ${imperecheate.size} dispozitive împerecheate: " +
+                imperecheate.joinToString(", ") { (it.name ?: "fără nume") + "/" + it.address })
+
+            /* Cautarea. Pe unitatea din Cityzen ecranul de Bluetooth din Setari
+               nu imperecheaza nimic: cand apesi pe un aparat trimite AT#CC,
+               adica "leaga handsfree si muzica". Un adaptor OBD n-are niciunul,
+               cautarea de servicii pica cu SDC_SEARCH_FAILED, legatura se rupe,
+               si lista de imperecheri ramane goala. Deci nu ne mai putem baza pe
+               ea — cautam noi aparatele din aer si ne legam direct la adresa.
+               Legatura la un aparat neimperecheat merge: in jurnalul unitatii se
+               vede cum se deschide fara probleme (dm_acl_hci_connect_success). */
+            cautaSiAlege(id, a, imperecheate)
+        }
+    }
+
+    /** Cauta 12 secunde, aduna ce gaseste peste cele imperecheate, apoi intreaba. */
+    private fun cautaSiAlege(id: Int, a: BluetoothAdapter, imperecheate: List<BluetoothDevice>) {
+        val gasite = LinkedHashMap<String, BluetoothDevice>()
+        imperecheate.forEach { gasite[it.address] = it }
+
+        val dialogCautare = AlertDialog.Builder(activitate)
+            .setTitle("Caut adaptoare")
+            .setMessage("Caut în jur… 12 secunde.\nAdaptorul trebuie să fie alimentat și neconectat la telefon.")
+            .setCancelable(false)
+            .create()
+        dialogCautare.show()
+
+        var ascultator: BroadcastReceiver? = null
+        var gata = false
+
+        val incheie = Runnable {
+            if (gata) return@Runnable
+            gata = true
+            try { a.cancelDiscovery() } catch (e: Exception) { }
+            try { ascultator?.let { activitate.unregisterReceiver(it) } } catch (e: Exception) { }
+            try { dialogCautare.dismiss() } catch (e: Exception) { }
+
+            val lista = gasite.values.toList()
+            JurnalBt.scrie("căutare terminată · ${lista.size} aparate: " +
                 lista.joinToString(", ") { (it.name ?: "fără nume") + "/" + it.address })
+
             if (lista.isEmpty()) {
-                eroare(id, "niciun adaptor împerecheat. Intră în Setări → Bluetooth, " +
-                        "împerechează adaptorul OBD (codul e 1234 sau 0000), apoi revino aici.")
-                return@post
+                eroare(id, "n-am găsit niciun adaptor. Verifică dacă e alimentat, " +
+                        "dacă nu e legat la telefon, și încearcă din nou.")
+                return@Runnable
             }
 
-            val nume = lista.map { (it.name ?: "fără nume") + "\n" + it.address }.toTypedArray()
+            val nume = lista.map { d ->
+                val marcaj = if (d.bondState == BluetoothDevice.BOND_BONDED) " · împerecheat" else ""
+                (d.name ?: "fără nume") + marcaj + "\n" + d.address
+            }.toTypedArray()
+
             AlertDialog.Builder(activitate)
                 .setTitle("Alege adaptorul OBD")
                 .setItems(nume) { _, i ->
@@ -128,6 +174,35 @@ class PunteSpp(
                 .setOnCancelListener { eroare(id, "nu s-a ales niciun adaptor") }
                 .show()
         }
+
+        ascultator = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    BluetoothDevice.ACTION_FOUND -> {
+                        val d = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                        if (d != null && !gasite.containsKey(d.address)) {
+                            gasite[d.address] = d
+                            JurnalBt.scrie("  găsit: " + (d.name ?: "fără nume") + " / " + d.address)
+                        }
+                    }
+                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> principal.post(incheie)
+                }
+            }
+        }
+
+        val filtru = IntentFilter()
+        filtru.addAction(BluetoothDevice.ACTION_FOUND)
+        filtru.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        try { activitate.registerReceiver(ascultator, filtru) } catch (e: Exception) { }
+
+        try { a.cancelDiscovery() } catch (e: Exception) { }
+        val pornit = try { a.startDiscovery() } catch (e: Exception) { false }
+        JurnalBt.scrie("căutare pornită: $pornit")
+
+        /* Plasa de siguranta: daca unitatea nu trimite niciodata
+           ACTION_DISCOVERY_FINISHED — se intampla pe stivele proprii — incheiem
+           noi dupa 12 secunde, cu ce am adunat pana atunci. */
+        principal.postDelayed(incheie, 12000)
     }
 
     @JavascriptInterface
