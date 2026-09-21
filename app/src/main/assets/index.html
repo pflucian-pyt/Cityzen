@@ -319,6 +319,15 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
       <span class="mic" id="sFelPunte">—</span>
     </div>
     <div class="rand" style="margin-top:9px">
+      <button class="act" id="btnVerifica">Verifică mașina</button>
+      <span class="mic" id="sVerifica">un minut de ascultare, apoi întreb modulele</span>
+    </div>
+    <div class="rand" style="margin-top:7px">
+      <button class="sec" id="btnFisaJos">Descarcă fișa</button>
+      <button class="sec" id="btnFisaCopie">Arată ca text de copiat</button>
+    </div>
+    <pre id="fisa" style="display:none;margin-top:9px;max-height:320px"></pre>
+    <div class="rand" style="margin-top:9px">
       <button class="sec" id="btnRaport">Vezi diagnosticul Bluetooth</button>
       <button class="sec" id="btnRaportJos">Descarcă diagnosticul</button>
       <button class="sec" id="btnRaportUsb">Diagnostic pe USB</button>
@@ -390,6 +399,8 @@ pre{margin:0;max-height:150px;overflow:auto;font-size:11px;color:var(--text3);
 })();
 </script>
 <script src="punte.js"></script>
+<script src="diagnoza.js"></script>
+<script src="verificare.js"></script>
 <script>
 
 /* Masina se cheama Allview Cityzen, nu BAW — numele s-a schimbat peste tot,
@@ -1245,6 +1256,51 @@ function inCaseta(text){
   e.focus(); e.select();
   window.__salvare(true,"selectat — ține apăsat și alege Copiază");
 }
+
+/* ============================================ verificarea completă
+
+   Un buton, tot lanțul: se leagă dacă nu e legat, ascultă magistrala un minut
+   fără pauzele buclei obișnuite, măsoară pachetul celulă cu celulă, întreabă
+   modulele de coduri de eroare, și scoate o fișă.
+
+   Catalogul de coduri e opțional. Fără el ies codurile brute; cu el, și numele
+   lor în românește. E același tipar ca la harta semnalelor: cunoașterea despre
+   mașină stă într-un fișier, nu în program. */
+var ULTIMA_FISA=null;
+fetch("coduri_cityzen.json").then(function(r){ return r.json(); })
+  .then(function(cat){
+    if(window.Diagnoza) Diagnoza.leaga({cere:cere,jurnal:scrie,coduri:cat});
+    scrie("catalog de coduri încărcat · "+cat.coduri.length+" defecte cunoscute");
+  })
+  .catch(function(){
+    if(window.Diagnoza) Diagnoza.leaga({cere:cere,jurnal:scrie,coduri:null});
+    scrie("catalogul de coduri lipsește — codurile vor apărea brute");
+  });
+
+G("btnVerifica").addEventListener("click",function(){
+  if(!window.Verificare){ G("sVerifica").textContent="verificare.js nu s-a încărcat"; return; }
+  var b=this; b.disabled=true;
+  G("sVerifica").textContent="ascult magistrala…";
+  Verificare.ruleaza().then(function(R){
+    ULTIMA_FISA=R;
+    G("fisa").style.display="block";
+    G("fisa").textContent=R.text;
+    var rele=R.verdicte.filter(function(v){ return !v.bine; }).length;
+    var cod=R.diagnoza?R.diagnoza.total:0;
+    G("sVerifica").textContent=(rele?rele+" măsurători peste prag":"toate măsurătorile în regulă")+
+      " · "+(cod?cod+" cod(uri) de eroare":"niciun cod de eroare");
+  }).catch(function(e){
+    G("sVerifica").textContent="n-a mers: "+(e&&e.message?e.message:e);
+  }).then(function(){ b.disabled=false; });
+});
+G("btnFisaCopie").addEventListener("click",function(){
+  if(!ULTIMA_FISA){ G("sVerifica").textContent="întâi apasă Verifică mașina"; return; }
+  inCaseta(ULTIMA_FISA.text);
+});
+G("btnFisaJos").addEventListener("click",function(){
+  if(!ULTIMA_FISA){ G("sVerifica").textContent="întâi apasă Verifică mașina"; return; }
+  laUsb(numeFisier("cityzen_fisa").replace(".json",".txt"),ULTIMA_FISA.text);
+});
 
 /* ============================================ diagnosticul Bluetooth
 
