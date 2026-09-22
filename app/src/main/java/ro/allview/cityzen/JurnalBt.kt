@@ -289,15 +289,18 @@ object JurnalBt {
                 d == null -> sfaturi.put("Niciun dispozitiv împerecheat nu pare a fi un adaptor OBD. " +
                         "Împerechează-l din Setări → Bluetooth.")
                 tip(d) == "numai LE" && punteActiva == "clasic" ->
-                    sfaturi.put("Adaptorul „${d.name}” e numai Low Energy. Puntea clasică nu are cum " +
-                            "să-l prindă — treci pe Bluetooth Low Energy din Setări.")
+                    sfaturi.put("Adaptorul „${d.name}” e numai Low Energy. Aplicația merge doar pe " +
+                            "Bluetooth clasic, deci nu-l poate folosi. Ia un adaptor clasic — " +
+                            "vLinker BM-Android e cel probat pe mașina asta.")
                 tip(d) == "clasic" && punteActiva == "ble" ->
                     sfaturi.put("Adaptorul „${d.name}” e clasic, dar puntea e pe Low Energy. " +
                             "Treci pe Bluetooth clasic din Setări.")
                 !d.uuids.orEmpty().any { it.uuid.toString().lowercase().startsWith("00001101") } &&
                         punteActiva == "clasic" ->
                     sfaturi.put("Adaptorul „${d.name}” nu anunță serviciul serial 1101. " +
-                            "Încearcă să-l ștergi din Setări → Bluetooth și să-l împerechezi din nou.")
+                            "Nu e neapărat un semn rău: lista de servicii se umple abia după o " +
+                            "împerechere reușită. Încearcă direct conectarea; dacă pică după zece " +
+                            "secunde, verifică să fie codul PIN al unității 1234.")
                 else -> sfaturi.put("Împerecherea și tipul par în regulă; citește jurnalul de mai jos.")
             }
         } catch (e: Exception) { }

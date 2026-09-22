@@ -587,12 +587,20 @@ function pregateste(){
     .then(function(){ scrie("ascult pe CAN 29 biți, 500 kbit/s"); });
 }
 
-/* ============================================ cadrele */
+/* ============================================ cadrele
+
+   Regula strictă, pusă pe 22 septembrie: un cadru valid are EXACT patru octeți
+   de identificator și EXACT opt de date. Fara ea, randurile taiate la mijloc de
+   o pauza in transmisie intrau ca si cum ar fi cadre noi, si asa apareau
+   identificatoare care nu exista pe masina: 14000014, 38383939, 0CE90CE9.
+   Intr-o radiografie de azi, 156 din 226 de "cadre" erau asa ceva. */
 function desfaCadru(r){
   var p=r.replace(/\s+/g," ").trim().split(" ");
   if(p.length<2) return null;
+  /* randurile de raspuns ale adaptorului nu sunt cadre */
+  if(/STOPPED|DATA ERROR|BUFFER|NO DATA|CAN ERROR|UNABLE|SEARCHING|ERROR/i.test(r)) return null;
   var id,prim;
-  if(/^[0-9A-F]{3}$|^[0-9A-F]{8}$/i.test(p[0])){ id=p[0].toUpperCase(); prim=1; }
+  if(/^[0-9A-F]{8}$/i.test(p[0])){ id=p[0].toUpperCase(); prim=1; }
   else if(p.length>=5&&/^[0-9A-F]{2}$/i.test(p[0])&&/^[0-9A-F]{2}$/i.test(p[1])
           &&/^[0-9A-F]{2}$/i.test(p[2])&&/^[0-9A-F]{2}$/i.test(p[3])){
     id=(p[0]+p[1]+p[2]+p[3]).toUpperCase(); prim=4;
@@ -602,6 +610,7 @@ function desfaCadru(r){
     if(!/^[0-9A-F]{2}$/i.test(p[i])) return null;
     o+=p[i].toUpperCase();
   }
+  if(o.length!==16) return null;   /* exact opt octeți de date, altfel e rând rupt */
   return o?{id:id,oct:o}:null;
 }
 var cadre={};            // id -> hex, ultimul primit

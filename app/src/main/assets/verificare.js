@@ -23,8 +23,8 @@
      harta nu le descrie: cele 29 de celule una cate una, cei 10 senzori de
      temperatura, si perechea tensiune-curent la aceeasi clipa. */
   var CEL = ["18FD90F3","18FD91F3","18FD92F3","18FD93F3","18FD94F3",
-             "18FD95F3","18FD96F3","18FD97F3"];   /* 7 x 4 + 1 = 29 de celule */
-  var NR_CELULE = 29;
+             "18FD95F3","18FD96F3","18FD97F3","18FD98F3","18FD99F3"];
+  var NR_CELULE = 38;   /* 9 x 4 + 2; confirmat pe 22 septembrie, suma = 125,5 V */
   var TEMP1 = "18FDD0F3", TEMP2 = "18FDE0F3";     /* 8 + 2 senzori, decalaj -40 */
   var PACHET = "1803D0F3";                        /* tensiune la 4, curent la 6 */
   var STARE  = "1808D0F3";                        /* Ah la 0, SOC la 2, SOH la 3 */
@@ -209,7 +209,9 @@
     r.sasiu = sasiu;
     if (!sasiu.cadreAirbag) r.note.push("cadrul de airbag (1801D0F1) nu a apărut deloc — starea lui nu se poate citi");
     if (r.celule.length && r.celule.length < NR_CELULE)
-      r.note.push("au venit doar " + r.celule.length + " celule din " + NR_CELULE + " — ascultarea a fost scurtă");
+      r.note.push("au venit doar " + r.celule.length + " celule din " + NR_CELULE +
+                  " — ori ascultarea a fost scurtă, ori bateria nu le raportează pe toate. " +
+                  "Pe 21 septembrie au lipsit ultimele nouă, tot drumul. De urmărit.");
     return r;
   }
 
