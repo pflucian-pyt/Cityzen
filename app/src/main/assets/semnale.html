@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cityzen · verificarea semnalelor</title>
+<!-- Puntea: da paginii un navigator.bluetooth care, pe dedesubt, vorbeste
+     Bluetooth CLASIC prin PunteSpp. Asa aceeasi pagina merge si in Chrome pe
+     telefon (cu un adaptor Low Energy), si in aplicatie (cu unul clasic:
+     OBDLink LX, vLinker BM). In Chrome scriptul lipseste si nu strica nimic. -->
+<script src="punte.js"></script>
+<style>
+:root{--fund:#0d1114;--panou:#161d21;--linie:#263136;--text:#e9eef0;--stins:#8fa0a6;
+      --verde:#3dbfa8;--chih:#e9a33c;--rosu:#e05a4f;
+      padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fund);color:var(--text);
+     font:15px/1.45 ui-sans-serif,system-ui,"Segoe UI",sans-serif;padding:12px}
+h1{font-size:19px;margin:0 0 3px}
+.mic{font-size:12.5px;color:var(--stins)}
+.tl{background:var(--panou);border:1px solid var(--linie);border-radius:13px;padding:13px;margin-bottom:11px}
+.lbl{font-size:12px;color:var(--stins);letter-spacing:.5px;text-transform:uppercase;margin:0 0 9px}
+button{font:inherit;min-height:46px;padding:11px 16px;border-radius:10px;border:1px solid var(--linie);
+       background:#1e2a2e;color:var(--text);cursor:pointer}
+button.pr{background:var(--verde);color:#0d1114;border-color:var(--verde);font-weight:600}
+button:disabled{opacity:.45}
+.rand{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:500;color:var(--stins);font-size:11.5px;padding:4px 5px;
+   border-bottom:1px solid var(--linie);text-transform:uppercase;letter-spacing:.4px}
+td{padding:6px 5px;border-bottom:1px solid #1c2428;vertical-align:top}
+td.v{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+code{font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--stins);word-break:break-all}
+.oct{display:inline-block;padding:2px 4px;border-radius:4px;margin:1px;font:12px ui-monospace,monospace}
+.o-folosit{background:#1c3b36;color:#8fe0d0}
+.o-misca{background:#3b301c;color:#e9c88c}
+.o-fix{background:#1c2428;color:#61717a}
+pre{background:#10171a;border-radius:9px;padding:9px;font-size:11.5px;max-height:190px;
+    overflow:auto;margin:0;white-space:pre-wrap;word-break:break-all}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:5px}
+.cel{background:#1b2429;border-radius:7px;padding:5px 3px;text-align:center}
+.cel b{display:block;font-size:14px;font-variant-numeric:tabular-nums}
+.cel span{font-size:10px;color:var(--stins)}
+.pastila{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11.5px}
+.p-ok{background:#1c3b36;color:#8fe0d0}.p-nu{background:#3b2220;color:#f0a49c}
+.p-ast{background:#2a2f33;color:var(--stins)}
+textarea{width:100%;background:#10171a;color:var(--text);border:1px solid var(--linie);
+         border-radius:9px;padding:9px;font:12px ui-monospace,monospace}
+</style>
+</head>
+<body>
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+  <a href="index.html" style="color:#3dbfa8;text-decoration:none;font-size:14px;
+     border:1px solid #263136;border-radius:9px;padding:9px 13px">‹ Bordul</a>
+  <h1 style="margin:0">Verificarea semnalelor</h1>
+</div>
+<p class="mic" id="capat">—</p>
+
+<div class="tl">
+  <div class="rand">
+    <button class="pr" id="btnConect">Conectează</button>
+    <button id="btnPauza" disabled>Pauză</button>
+    <span class="mic" id="stare">neconectat</span>
+  </div>
+  <div class="rand" style="margin-top:9px">
+    <span class="mic" id="numere">—</span>
+  </div>
+</div>
+
+<div class="tl">
+  <p class="lbl">Semnalele din hartă</p>
+  <table id="tSem"><thead><tr>
+    <th>semnal</th><th>acum</th><th>minim</th><th>maxim</th><th>ritm</th><th>stare</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="mic" id="semNota" style="margin-top:8px">Un semnal e „confirmat” după ce s-a mișcat de cel puțin
+  zece ori și valorile stau în limite cu sens. „Nemișcat” nu e neapărat rău — poate n-ai apăsat pedala.</p>
+</div>
+
+<div class="tl">
+  <p class="lbl">Celulele</p>
+  <p class="mic" id="celRez">—</p>
+  <div class="grid" id="celule" style="margin-top:9px"></div>
+</div>
+
+<div class="tl">
+  <p class="lbl">Octeții, cadru cu cadru</p>
+  <p class="mic">Verde: folosit de hartă. Chihlimbar: <b>se mișcă și nu-l explică nimeni</b> — acolo sunt
+  semnalele nedescoperite. Gri: nu s-a schimbat niciodată.</p>
+  <div id="octeti" style="margin-top:10px"></div>
+</div>
+
+<div class="tl">
+  <p class="lbl">Ce rămâne de descifrat</p>
+  <pre id="ramase">—</pre>
+  <div class="rand" style="margin-top:10px">
+    <button id="btnJos">Descarcă tot</button>
+    <button id="btnText">Arată ca text</button>
+  </div>
+</div>
+
+<details class="tl">
+  <summary class="lbl" style="margin:0">Harta și jurnalul</summary>
+  <textarea id="harta" rows="5" spellcheck="false" style="margin-top:10px"></textarea>
+  <div class="rand" style="margin-top:8px">
+    <button id="btnHarta">Folosește harta asta</button>
+    <button id="btnHartaFab">Pune harta din fabrică</button>
+  </div>
+  <pre id="jurnal" style="margin-top:10px"></pre>
+</details>
+
+<script>
+"use strict";
+function G(i){return document.getElementById(i);}
+function acum(){var d=new Date();return d.toTimeString().slice(0,8);}
+var jur=[];
+function scrie(m){jur.unshift(acum()+"  "+m);if(jur.length>200)jur.pop();G("jurnal").textContent=jur.join("\n");}
+
+/* ---------------------------------------------------------------- harta */
+var HARTA_FAB={
+ masina:"Allview Cityzen",
+ celuleCadre:["18FD90F3","18FD91F3","18FD92F3","18FD93F3","18FD94F3",
+              "18FD95F3","18FD96F3","18FD97F3","18FD98F3","18FD99F3"],
+ celuleN:38,
+ tempCadre:["18FDD0F3","18FDE0F3"], tempN:10, tempPlus:-40,
+ semnale:[
+  {rol:"tensiune", id:"1803D0F3",octet:4,lung:2,ordine:"le",factor:0.1,  unitate:"V",  min:60, max:150},
+  {rol:"curent",   id:"1803D0F3",octet:6,lung:2,ordine:"le",factor:0.1,plus:-1000,unitate:"A",min:-300,max:400},
+  {rol:"soc",      id:"1808D0F3",octet:2,lung:1,factor:1,              unitate:"%",  min:0,  max:100},
+  {rol:"ahRamasi", id:"1808D0F3",octet:0,lung:2,ordine:"le",factor:0.01,unitate:"Ah", min:0,  max:200},
+  {rol:"soh",      id:"1808D0F3",octet:3,lung:1,factor:1,              unitate:"%",  min:0,  max:100},
+  {rol:"celMed",   id:"1808D0F3",octet:6,lung:2,ordine:"le",factor:0.001,unitate:"V", min:2.5,max:4},
+  {rol:"viteza",   id:"1801D9D0",octet:2,lung:1,factor:1,              unitate:"km/h",min:0, max:130},
+  {rol:"rpm",      id:"1801D0F8",octet:0,lung:2,ordine:"le",factor:1,plus:-12000,unitate:"rot/min",min:-6000,max:8000},
+  {rol:"cuplu",    id:"1801D0F8",octet:2,lung:2,ordine:"le",factor:0.1,plus:-300,unitate:"Nm",min:-150,max:150},
+  {rol:"celMax",   id:"1802D0F3",octet:2,lung:2,ordine:"le",factor:0.001,unitate:"V",min:2.5,max:4},
+  {rol:"celMin",   id:"1802D0F3",octet:4,lung:2,ordine:"le",factor:0.001,unitate:"V",min:2.5,max:4},
+  {rol:"tMax",     id:"1802D0F3",octet:6,lung:1,factor:1,plus:-40,     unitate:"°C", min:-30,max:80},
+  {rol:"tMin",     id:"1802D0F3",octet:7,lung:1,factor:1,plus:-40,     unitate:"°C", min:-30,max:80},
+  {rol:"autonomie",id:"180217D0",octet:6,lung:1,factor:1,              unitate:"km", min:0,  max:255}
+ ]
+};
+var harta=JSON.parse(JSON.stringify(HARTA_FAB));
+
+/* ------------------------------------------------------------ legătura */
+var SRV=["0000fff0-0000-1000-8000-00805f9b34fb","0000ffe0-0000-1000-8000-00805f9b34fb",
+ "000018f0-0000-1000-8000-00805f9b34fb","0000ffe5-0000-1000-8000-00805f9b34fb",
+ "0000ff00-0000-1000-8000-00805f9b34fb","0000fee7-0000-1000-8000-00805f9b34fb",
+ "0000abf0-0000-1000-8000-00805f9b34fb","6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+ "0000180a-0000-1000-8000-00805f9b34fb","0000180f-0000-1000-8000-00805f9b34fb"];
+
+var chW=null,chN=null,conectat=false,restul="",peRand=null,pauza=false,numeAd="";
+
+function primeste(e){
+  var t="";var v=e.target.value;
+  for(var i=0;i<v.byteLength;i++) t+=String.fromCharCode(v.getUint8(i));
+  restul+=t;
+  var r=restul.split(/[\r\n]+/); restul=r.pop();
+  r.forEach(function(x){x=x.trim();if(x&&x!==">"&&peRand){try{peRand(x);}catch(err){}}});
+}
+function scrieAd(s){
+  var o=new TextEncoder().encode(s);
+  return chW.writeValueWithoutResponse?chW.writeValueWithoutResponse(o):chW.writeValue(o);
+}
+function cere(c,ms){
+  return new Promise(function(rez){
+    scrieAd(c+"\r").catch(function(){});
+    setTimeout(rez,ms||700);
+  });
+}
+function pregateste(){
+  return cere("ATZ",3200).then(function(){return cere("ATE0");})
+   .then(function(){return cere("ATL0");}).then(function(){return cere("ATS1");})
+   .then(function(){return cere("ATH1");}).then(function(){return cere("ATCAF0");})
+   .then(function(){return cere("ATSP7",2400);})
+   .then(function(){return cere("ATCF 00000000",800);})
+   .then(function(){return cere("ATCM 00000000",800);})
+   .then(function(){
+     scrie("pornesc ascultarea continuă");
+     peRand=inghite;
+     return scrieAd("ATMA\r");
+   });
+}
+
+G("btnConect").addEventListener("click",function(){
+  if(!navigator.bluetooth){scrie("browserul ăsta n-are Web Bluetooth");G("stare").textContent="fără Web Bluetooth";return;}
+  this.disabled=true;G("stare").textContent="caut adaptorul";
+  navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:SRV})
+  .then(function(d){
+    numeAd=d.name||"adaptor";
+    d.addEventListener("gattserverdisconnected",function(){
+      conectat=false;G("stare").textContent="deconectat";scrie("adaptorul s-a deconectat");
+      G("btnConect").disabled=false;G("btnConect").textContent="Reconectează";
+    });
+    return d.gatt.connect();
+  })
+  .then(function(s){return s.getPrimaryServices();})
+  .then(function(sv){
+    var l=Promise.resolve();
+    sv.forEach(function(s){l=l.then(function(){
+      return s.getCharacteristics().then(function(cs){
+        cs.forEach(function(c){
+          if(!chW&&(c.properties.write||c.properties.writeWithoutResponse))chW=c;
+          if(!chN&&c.properties.notify)chN=c;
+        });
+      }).catch(function(){});
+    });});
+    return l;
+  })
+  .then(function(){
+    if(!chW||!chN) throw new Error("adaptorul n-are caracteristicile așteptate");
+    return chN.startNotifications();
+  })
+  .then(function(){
+    chN.addEventListener("characteristicvaluechanged",primeste);
+    conectat=true;G("stare").textContent="conectat · "+numeAd;
+    G("btnPauza").disabled=false;scrie("legat la "+numeAd);
+    return pregateste();
+  })
+  .catch(function(e){
+    G("stare").textContent="n-a mers: "+e.message;scrie("EROARE: "+e.message);
+    G("btnConect").disabled=false;
+  });
+});
+
+G("btnPauza").addEventListener("click",function(){
+  pauza=!pauza;this.textContent=pauza?"Reia":"Pauză";
+  scrie(pauza?"pauză — cadrele nu se mai numără":"reiau");
+});
+
+/* --------------------------------------------------------- cadrele
+   Regula strictă: exact 4 octeți de identificator și 8 de date. Rândurile rupte
+   au umplut până acum statisticile cu identificatoare care nu există. */
+function desfa(r){
+  if(/STOPPED|DATA ERROR|BUFFER|NO DATA|CAN ERROR|UNABLE|SEARCHING|ERROR|OK/i.test(r)) return null;
+  var p=r.replace(/\s+/g," ").trim().split(" ");
+  if(p.length!==12) return null;
+  for(var i=0;i<12;i++) if(!/^[0-9A-F]{2}$/i.test(p[i])) return null;
+  return {id:p.slice(0,4).join("").toUpperCase(), o:p.slice(4).map(function(x){return parseInt(x,16);})};
+}
+
+var cadre={};          /* id -> {n, ultim[8], min[8], max[8], t0, t1} */
+var totalCadre=0, aruncate=0, pornitLa=Date.now();
+
+function inghite(rand){
+  if(pauza) return;
+  var c=desfa(rand);
+  if(!c){aruncate++;return;}
+  totalCadre++;
+  var e=cadre[c.id];
+  if(!e){e=cadre[c.id]={n:0,ultim:c.o.slice(),min:c.o.slice(),max:c.o.slice(),t0:Date.now(),t1:0};}
+  e.n++; e.t1=Date.now(); e.ultim=c.o.slice();
+  for(var i=0;i<8;i++){ if(c.o[i]<e.min[i])e.min[i]=c.o[i]; if(c.o[i]>e.max[i])e.max[i]=c.o[i]; }
+}
+
+/* ------------------------------------------------------- citirea hărții */
+function ia(s){
+  var e=cadre[s.id]; if(!e) return null;
+  var o=e.ultim, v=0;
+  if(s.lung===1) v=o[s.octet];
+  else if(s.ordine==="le") v=o[s.octet]|(o[s.octet+1]<<8);
+  else v=(o[s.octet]<<8)|o[s.octet+1];
+  v=v*(s.factor||1)+(s.plus||0);
+  return v;
+}
+function intins(s){   /* cât de mult s-a mișcat, în unități */
+  var e=cadre[s.id]; if(!e) return null;
+  function d(o){var v;
+    if(s.lung===1)v=o[s.octet];
+    else if(s.ordine==="le")v=o[s.octet]|(o[s.octet+1]<<8);
+    else v=(o[s.octet]<<8)|o[s.octet+1];
+    return v*(s.factor||1)+(s.plus||0);}
+  var a=d(e.min),b=d(e.max);
+  return {jos:Math.min(a,b),sus:Math.max(a,b)};
+}
+function rot(v,u){
+  if(v===null||v===undefined) return "—";
+  var z=(Math.abs(v)<10)?3:(Math.abs(v)<100?1:0);
+  return v.toFixed(z).replace(".",",")+" "+(u||"");
+}
+
+/* --------------------------------------------------------------- pictat */
+function pictaSemnale(){
+  var t=G("tSem").querySelector("tbody"), h="";
+  harta.semnale.forEach(function(s){
+    var e=cadre[s.id], v=ia(s), r=intins(s);
+    var stare, cls;
+    if(!e){ stare="cadru absent"; cls="p-nu"; }
+    else if(r&&(r.jos<s.min||r.sus>s.max)){ stare="iese din limite"; cls="p-nu"; }
+    else if(r&&r.jos===r.sus){ stare="nemișcat"; cls="p-ast"; }
+    else if(e.n>=10){ stare="confirmat"; cls="p-ok"; }
+    else { stare="prea puține"; cls="p-ast"; }
+    var sec=e?Math.max(1,(e.t1-e.t0)/1000):1;
+    h+="<tr><td><b>"+s.rol+"</b><br><code>"+s.id+" ["+s.octet+(s.lung>1?"–"+(s.octet+s.lung-1):"")+"]</code></td>"
+      +"<td class=v>"+rot(v,s.unitate)+"</td>"
+      +"<td class=v>"+(r?rot(r.jos,""):"—")+"</td>"
+      +"<td class=v>"+(r?rot(r.sus,""):"—")+"</td>"
+      +"<td class=v>"+(e?(e.n/sec).toFixed(1)+" Hz":"—")+"</td>"
+      +"<td><span class='pastila "+cls+"'>"+stare+"</span></td></tr>";
+  });
+  t.innerHTML=h;
+}
+
+function pictaCelule(){
+  var v=[],g="";
+  harta.celuleCadre.forEach(function(id){
+    var e=cadre[id]; if(!e) return;
+    for(var k=0;k<4;k++){
+      var mv=e.ultim[k*2]|(e.ultim[k*2+1]<<8);
+      if(mv>1000&&mv<4500) v.push(mv);
+    }
+  });
+  if(!v.length){G("celRez").textContent="încă niciun cadru de celule";G("celule").innerHTML="";return;}
+  var mn=Math.min.apply(null,v), mx=Math.max.apply(null,v);
+  var sum=v.reduce(function(a,b){return a+b;},0);
+  G("celRez").textContent=v.length+" din "+harta.celuleN+" celule · "+mn+"–"+mx+" mV · împrăștiere "
+    +(mx-mn)+" mV · sumă "+(sum/1000).toFixed(1)+" V"
+    +(v.length<harta.celuleN?"  ⚠ lipsesc "+(harta.celuleN-v.length):"");
+  v.forEach(function(mv,i){
+    var c=(mv===mn)?"var(--chih)":(mv===mx?"var(--verde)":"var(--stins)");
+    g+="<div class=cel><b style='color:"+c+"'>"+mv+"</b><span>"+(i+1)+"</span></div>";
+  });
+  G("celule").innerHTML=g;
+}
+
+function folositi(id){
+  var set={};
+  harta.semnale.forEach(function(s){
+    if(s.id!==id) return;
+    for(var k=0;k<s.lung;k++) set[s.octet+k]=1;
+  });
+  if(harta.celuleCadre.indexOf(id)>=0) for(var k=0;k<8;k++) set[k]=1;
+  if(harta.tempCadre.indexOf(id)>=0) for(var k2=0;k2<8;k2++) set[k2]=1;
+  return set;
+}
+
+function pictaOcteti(){
+  var ids=Object.keys(cadre).sort(), h="", ramase=[];
+  ids.forEach(function(id){
+    var e=cadre[id], u=folositi(id), r="";
+    var necunoscuti=[];
+    for(var i=0;i<8;i++){
+      var misca=e.min[i]!==e.max[i], cls=u[i]?"o-folosit":(misca?"o-misca":"o-fix");
+      if(misca&&!u[i]) necunoscuti.push(i);
+      r+="<span class='oct "+cls+"' title='octet "+i+": "+e.min[i]+"–"+e.max[i]+"'>"
+        +("0"+e.ultim[i].toString(16).toUpperCase()).slice(-2)+"</span>";
+    }
+    h+="<div style='margin-bottom:7px'><code>"+id+"</code> <span class=mic>"+e.n+" cadre</span><br>"+r+"</div>";
+    if(necunoscuti.length) ramase.push(id+"  octeții "+necunoscuti.join(", ")
+      +"  ("+necunoscuti.map(function(i){return e.min[i]+"–"+e.max[i];}).join(" · ")+")");
+  });
+  G("octeti").innerHTML=h||"<span class=mic>încă niciun cadru</span>";
+  G("ramase").textContent=ramase.length
+    ? ramase.join("\n")+"\n\n"+ramase.length+" locuri în care se mișcă ceva neexplicat."
+    : (ids.length?"Nimic nemișcat rămas neexplicat. Harta acoperă tot ce se schimbă.":"—");
+}
+
+setInterval(function(){
+  if(!conectat) return;
+  var sec=Math.max(1,(Date.now()-pornitLa)/1000);
+  G("numere").textContent=totalCadre+" cadre · "+Object.keys(cadre).length+" identificatoare · "
+    +(totalCadre/sec).toFixed(0)+"/s · "+aruncate+" rânduri rupte, aruncate";
+  pictaSemnale(); pictaCelule(); pictaOcteti();
+},1000);
+
+/* -------------------------------------------------------------- ieșirea */
+function totul(){
+  var o={unealta:"Cityzen verificarea semnalelor",cand:new Date().toISOString(),
+         adaptor:numeAd,cadreTotale:totalCadre,randuriRupte:aruncate,harta:harta,cadre:{},semnale:[]};
+  Object.keys(cadre).forEach(function(id){
+    var e=cadre[id];
+    o.cadre[id]={n:e.n,ultim:e.ultim,min:e.min,max:e.max};
+  });
+  harta.semnale.forEach(function(s){
+    var r=intins(s);
+    o.semnale.push({rol:s.rol,id:s.id,octet:s.octet,acum:ia(s),jos:r?r.jos:null,sus:r?r.sus:null,
+                    esantioane:cadre[s.id]?cadre[s.id].n:0});
+  });
+  return JSON.stringify(o,null,1);
+}
+G("btnJos").addEventListener("click",function(){
+  var b=new Blob([totul()],{type:"application/json"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(b);
+  a.download="cityzen_semnale_"+new Date().toISOString().slice(0,16).replace(/[-:T]/g,"")+".json";
+  document.body.appendChild(a);a.click();a.remove();
+  scrie("am scos fișierul");
+});
+G("btnText").addEventListener("click",function(){
+  var t=G("harta"); t.value=totul(); t.focus(); t.select();
+  scrie("textul e în caseta de jos, îl poți copia");
+});
+G("btnHarta").addEventListener("click",function(){
+  try{ harta=JSON.parse(G("harta").value); scrie("hartă nouă, "+harta.semnale.length+" semnale"); }
+  catch(e){ scrie("harta nu e JSON bun: "+e.message); }
+});
+G("btnHartaFab").addEventListener("click",function(){
+  harta=JSON.parse(JSON.stringify(HARTA_FAB));
+  G("harta").value=JSON.stringify(harta,null,1);
+  scrie("harta din fabrică pusă la loc");
+});
+G("harta").value=JSON.stringify(harta,null,1);
+
+/* Spunem din prima ce adaptor se caută, ca sa nu se piarda timp cu unul care
+   n-are cum sa mearga pe drumul ales. */
+G("capat").textContent = window.PunteSpp
+  ? "în aplicație · adaptor Bluetooth clasic (OBDLink LX, vLinker BM). Cele numai-LE nu apar."
+  : "în browser · adaptor Low Energy (OBDLink CX). Cele clasice nu apar aici.";
+scrie("gata · apasă Conectează");
+</script>
+</body>
+</html>
